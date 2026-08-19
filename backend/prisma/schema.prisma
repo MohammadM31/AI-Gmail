@@ -1,0 +1,133 @@
+// Reference schema — Supabase Postgres is queried directly via
+// @supabase/supabase-js in this codebase, so Prisma Client isn't
+// used at runtime. Keep this in sync and use it to generate/track
+// migrations (`npx prisma migrate dev`) if you'd rather manage the
+// schema with Prisma than the Supabase SQL editor.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id         String   @id @default(cuid())
+  name       String
+  // Shared code a teammate enters at signup to join this org instead
+  // of creating a new one. Rotate via POST /api/auth/org/invite-code/regenerate.
+  inviteCode String   @unique
+  createdAt  DateTime @default(now())
+
+  users User[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  emails    Email[]    @relation("sender")
+  contacts  Contact[]
+  templates Template[]
+  settings  UserSettings?
+  analytics Analytics[]
+  auditLogs AuditLog[]
+
+  @@index([organizationId])
+}
+
+model UserSettings {
+  id               String @id @default(cuid())
+  userId           String @unique
+  user             User   @relation(fields: [userId], references: [id])
+  aiTone           String? @default("professional")
+  defaultChartType String? @default("bar")
+  themePreference  String  @default("light")
+}
+
+model Contact {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  name         String
+  email        String
+  organization String?
+  lastUsed     DateTime @default(now())
+  usageCount   Int      @default(0)
+
+  @@unique([userId, email])
+  @@index([userId, name])
+}
+
+model Email {
+  id            String    @id @default(cuid())
+  senderId      String
+  sender        User      @relation("sender", fields: [senderId], references: [id])
+  recipients    Json
+  subject       String
+  content       String
+  bulletPoints  String[]
+  chartData     Json?
+  chartImageUrl String?
+  attachments   Json?     // [{name, path, size, type}] — files live in Supabase Storage
+  status        String
+  threadId      String?
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  readReceipts  Json?
+
+  thread    Email?  @relation("thread", fields: [threadId], references: [id])
+  responses Email[] @relation("thread")
+
+  @@index([senderId, threadId])
+  @@index([status])
+}
+
+model Template {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  name        String
+  description String?
+  prompt      String
+  chartConfig Json?
+  isPublic    Boolean  @default(false)
+  usageCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+model Analytics {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  eventType String
+  metadata  Json?
+  timestamp DateTime @default(now())
+
+  @@index([userId, timestamp])
+  @@index([eventType])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  emailId   String?
+  aiInput   String?
+  aiOutput  Json?
+  ipAddress String?
+  userAgent String?
+  timestamp DateTime @default(now())
+
+  @@index([userId, timestamp])
+}
