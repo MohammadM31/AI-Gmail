@@ -75,3 +75,37 @@ export async function analyzeTopics(req: Request, res: Response, next: NextFunct
     next(err);
   }
 }
+
+export async function processMessage(req: Request, res: Response, next: NextFunction) {
+  try {
+    console.log("🔍 AI Request received:", req.body);
+    const { message } = processSchema.parse(req.body);
+    console.log("📝 Message to process:", message);
+    
+    console.log("🤖 Calling Gemini API...");
+    const result = await processMessageWithAI(message);
+    console.log("✅ Gemini response received:", result);
+    
+    const recipients = await resolveRecipients(req.auth!.userId, result.recipients);
+    console.log("👤 Resolved recipients:", recipients);
+
+    await trackEvent(req.auth!.userId, "ai_call");
+    await logAudit({
+      userId: req.auth!.userId,
+      action: "ai_process",
+      aiInput: message,
+      aiOutput: result,
+      req,
+    });
+
+    res.json({ ...result, recipients });
+  } catch (err) {
+    console.error("❌❌❌ AI PROCESSING ERROR ❌❌❌");
+    console.error("Error:", err);
+    if (err instanceof Error) {
+      console.error("Message:", err.message);
+      console.error("Stack:", err.stack);
+    }
+    next(err);
+  }
+}
