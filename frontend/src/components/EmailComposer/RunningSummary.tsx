@@ -11,17 +11,19 @@ export function RunningSummary({ threadId }: RunningSummaryProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // ✅ Exit early if threadId is null or undefined
     if (!threadId) {
       setSummary([]);
-      return; // ✅ Exit early if threadId is null
+      setLoading(false);
+      return;
     }
 
     async function loadSummary() {
       setLoading(true);
       setError(null);
       try {
-        // ✅ threadId is guaranteed non-null here
-        const result = await summarizeThread(threadId);
+        // ✅ threadId is guaranteed to be a string here
+        const result = await summarizeThread(threadId as string);
         setSummary(result.summary);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load summary");
@@ -35,6 +37,7 @@ export function RunningSummary({ threadId }: RunningSummaryProps) {
   }, [threadId]);
 
   if (!threadId) return null;
+  
   if (loading) {
     return (
       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-accent-light/5 dark:bg-accent-dark/20 p-4 animate-pulse">
@@ -43,6 +46,7 @@ export function RunningSummary({ threadId }: RunningSummaryProps) {
       </div>
     );
   }
+  
   if (error) {
     return (
       <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-500">
@@ -50,6 +54,7 @@ export function RunningSummary({ threadId }: RunningSummaryProps) {
       </div>
     );
   }
+  
   if (summary.length === 0) {
     return (
       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-accent-light/5 dark:bg-accent-dark/20 p-4">
