@@ -13,7 +13,7 @@ export function RunningSummary({ threadId }: RunningSummaryProps) {
   useEffect(() => {
     if (!threadId) {
       setSummary([]);
-      return;
+      return; // ✅ Exit early if threadId is null
     }
 
     async function loadSummary() {

@@ -11,6 +11,7 @@ export interface AiProcessResult {
   bulletPoints: string[];
   chart: ChartData | null;
   tone: "professional" | "casual" | "urgent";
+  emailId?: string; // ✅ ADDED
 }
 
 export interface User {
@@ -29,7 +30,7 @@ export interface Attachment {
 
 export interface EmailItem {
   id: string;
-  senderId?: string;
+  senderId?: string; // ✅ ADDED
   recipients: { name: string; email: string | null }[];
   subject: string;
   content: string;

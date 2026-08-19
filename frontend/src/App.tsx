@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useUserStore } from "./stores/userStore";
 import { AuthScreen } from "./components/Auth/AuthScreen";
-import { Sidebar } from "./components/Sidebar/Sidebar";
+import { Sidebar } from "./components/Sidebar/Sidebar"; // ✅ FIXED PATH
 import { ThemeToggle } from "./components/Shared/ThemeToggle";
 import { Composer } from "./components/EmailComposer/Composer";
 import { ThreadView } from "./components/EmailView/ThreadView";
@@ -95,7 +95,6 @@ function App() {
       case "templates":
         return <TemplateManager onUse={(prompt) => {
           setActiveView("compose");
-          // The prompt will be used by the composer
         }} />;
       case "analytics":
         return <Analytics />;
