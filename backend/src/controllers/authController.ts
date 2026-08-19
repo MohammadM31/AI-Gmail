@@ -1,13 +1,5 @@
+import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
-import { Request, Response, NextFunction } from "express";
-import { supabase } from "../utils/supabaseClient";
-import { ApiError } from "../middleware/errorHandler";
-import { registerSchema, loginSchema } from "../utils/validators";
-import { signAppToken } from "../utils/jwt";
-import { generateInviteCode } from "../utils/inviteCode";
-
-import { Request, Response, NextFunction } from "express";
-import crypto from "crypto"; // ✅ Keep this import
 import { supabase } from "../utils/supabaseClient";
 import { ApiError } from "../middleware/errorHandler";
 import { registerSchema, loginSchema } from "../utils/validators";
@@ -153,11 +145,6 @@ export async function me(req: Request, res: Response, next: NextFunction) {
 }
 
 // ---- Organization invite code ----
-// Any member can view or rotate the shared invite code. There's no
-// per-user role system yet (see README known gaps), so this is
-// intentionally not restricted to an "admin" — add a role check here
-// once User has a role column.
-
 export async function getInviteCode(req: Request, res: Response, next: NextFunction) {
   try {
     const { data, error } = await supabase
