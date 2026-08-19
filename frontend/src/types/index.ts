@@ -29,6 +29,7 @@ export interface Attachment {
 
 export interface EmailItem {
   id: string;
+  senderId?: string;
   recipients: { name: string; email: string | null }[];
   subject: string;
   content: string;

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useUserStore } from "./stores/userStore";
 import { AuthScreen } from "./components/Auth/AuthScreen";
-import { Sidebar } from "./components/Shared/Sidebar";
+import { Sidebar } from "./components/Sidebar/Sidebar";
 import { ThemeToggle } from "./components/Shared/ThemeToggle";
 import { Composer } from "./components/EmailComposer/Composer";
 import { ThreadView } from "./components/EmailView/ThreadView";

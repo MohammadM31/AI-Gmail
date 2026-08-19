@@ -20,6 +20,7 @@ export function RunningSummary({ threadId }: RunningSummaryProps) {
       setLoading(true);
       setError(null);
       try {
+        // ✅ threadId is guaranteed non-null here
         const result = await summarizeThread(threadId);
         setSummary(result.summary);
       } catch (err) {
