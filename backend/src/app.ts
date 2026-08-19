@@ -17,12 +17,33 @@ import settingsRoutes from "./routes/settingsRoutes";
 export const app = express();
 
 app.use(helmet());
+
+// ✅ FIXED: Handle both with and without trailing slash
+const allowedOrigins = [
+  "https://ai-gmail-three.vercel.app",
+  "https://ai-gmail-three.vercel.app/",
+  process.env.FRONTEND_URL ?? "http://localhost:5173"
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL ?? "http://localhost:5173",
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      
+      // Check if the origin is allowed
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        console.log('❌ CORS blocked origin:', origin);
+        console.log('✅ Allowed origins:', allowedOrigins);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
   })
 );
+
 app.use(express.json({ limit: "1mb" }));
 app.use(pinoHttp({ logger }));
 
