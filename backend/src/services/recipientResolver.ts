@@ -30,9 +30,12 @@ export async function resolveRecipients(userId: string, raw: RawRecipient[]) {
 
   const matchedIds = resolved.map((r) => r.contactId).filter(Boolean) as string[];
   if (matchedIds.length) {
-    await supabase.rpc("increment_contact_usage", { contact_ids: matchedIds }).catch(() => {
+    try {
+      await supabase.rpc("increment_contact_usage", { contact_ids: matchedIds });
+    } catch (error) {
       // Optional RPC — fine if it doesn't exist yet; usage counts just won't bump.
-    });
+      console.log('Contact usage increment skipped (RPC may not exist)');
+    }
   }
 
   return resolved;
