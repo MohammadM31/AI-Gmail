@@ -1,5 +1,6 @@
 import { useState, FormEvent } from "react";
 import { useAuth } from "../../hooks/useAuth";
+import { useUserStore } from "../../stores/userStore";
 
 export function AuthScreen() {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -24,6 +25,18 @@ export function AuthScreen() {
         inviteCode: orgMode === "join" ? inviteCode : undefined,
       }).catch(() => {});
     }
+  }
+
+  function handleDevLogin() {
+    useUserStore.getState().setSession(
+      {
+        id: "dev-user",
+        email: "dev@example.com",
+        name: "Developer",
+        organizationId: "dev-org"
+      },
+      "dev-token"
+    );
   }
 
   return (
@@ -123,6 +136,15 @@ export function AuthScreen() {
           className="w-full text-xs opacity-70 hover:opacity-100 underline"
         >
           {mode === "login" ? "Need an account? Register" : "Already have an account? Sign in"}
+        </button>
+
+        {/* ✅ DEV MODE: Skip Login Button */}
+        <button
+          type="button"
+          onClick={handleDevLogin}
+          className="w-full rounded-full bg-green-500 px-4 py-2 text-sm font-medium text-white hover:opacity-90 transition"
+        >
+          🚀 Skip Login (Dev Mode)
         </button>
       </form>
     </div>

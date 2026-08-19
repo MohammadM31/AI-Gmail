@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import type { EmailItem } from "../../types";
 import { listEmails } from "../../services/apiClient";
 
-export function EmailList({ onSelect }: { onSelect: (email: EmailItem) => void }) {
+interface EmailListProps {
+  onSelect: (email: EmailItem) => void;
+}
+
+export function EmailList({ onSelect }: EmailListProps) {
   const [emails, setEmails] = useState<EmailItem[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -55,6 +59,9 @@ export function EmailList({ onSelect }: { onSelect: (email: EmailItem) => void }
               <div className="flex items-center justify-between">
                 <span className="font-medium text-sm">{email.subject}</span>
                 <span className="text-xs opacity-50 capitalize">{email.status}</span>
+              </div>
+              <div className="text-xs opacity-60 mt-1">
+                {email.recipients.map((r) => r.name).join(", ")}
               </div>
               <p className="text-xs opacity-60 mt-1 line-clamp-1">
                 {email.bulletPoints[0] ?? email.content}

@@ -16,31 +16,52 @@ import settingsRoutes from "./routes/settingsRoutes";
 
 export const app = express();
 
-app.use(helmet());
+// ✅ HELMET should be BEFORE CORS but configured to allow CORS
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginOpenerPolicy: { policy: "unsafe-none" },
+  })
+);
 
-// ✅ FIXED: Handle both with and without trailing slash
+// ✅ FIXED CORS: Allow localhost and Vercel
 const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://localhost:5000",
   "https://ai-gmail-three.vercel.app",
   "https://ai-gmail-three.vercel.app/",
-  process.env.FRONTEND_URL ?? "http://localhost:5173"
+  process.env.FRONTEND_URL,
 ].filter(Boolean);
+
+console.log("✅ Allowed CORS origins:", allowedOrigins);
 
 app.use(
   cors({
     origin: function (origin, callback) {
       // Allow requests with no origin (like mobile apps or curl)
-      if (!origin) return callback(null, true);
+      if (!origin) {
+        console.log("✅ No origin, allowing");
+        return callback(null, true);
+      }
       
       // Check if the origin is allowed
-      if (allowedOrigins.indexOf(origin) !== -1) {
+      const allowed = allowedOrigins.some(
+        (allowedOrigin) => allowedOrigin === origin || allowedOrigin === origin + "/"
+      );
+      
+      if (allowed) {
+        console.log("✅ CORS allowed:", origin);
         callback(null, true);
       } else {
-        console.log('❌ CORS blocked origin:', origin);
-        console.log('✅ Allowed origins:', allowedOrigins);
-        callback(new Error('Not allowed by CORS'));
+        console.log("❌ CORS blocked:", origin);
+        console.log("✅ Allowed origins:", allowedOrigins);
+        callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept"],
   })
 );
 

@@ -1,18 +1,25 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { VoiceInput } from "./VoiceInput";
 import { SplitView } from "./SplitView";
 import { RecipientSuggester } from "./RecipientSuggester";
 import { TemplateSelector } from "./TemplateSelector";
-import { processMessage, createEmail, uploadAttachment } from "../../services/apiClient";
+import { RunningSummary } from "./RunningSummary";
+import { processMessage, createEmail, sendEmail, uploadAttachment } from "../../services/apiClient";
 import type { AiProcessResult, Attachment } from "../../types";
 
-export function Composer({ initialPrompt }: { initialPrompt?: string }) {
-  const [text, setText] = useState(initialPrompt ?? "");
+interface ComposerProps {
+  threadId?: string | null;
+  onEmailSent?: () => void;
+}
+
+export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
+  const [text, setText] = useState("");
   const [recipients, setRecipients] = useState<{ name: string; email: string | null }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AiProcessResult | null>(null);
   const [saved, setSaved] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -23,6 +30,7 @@ export function Composer({ initialPrompt }: { initialPrompt?: string }) {
     setLoading(true);
     setError(null);
     setSaved(false);
+    setResult(null);
     try {
       const res = await processMessage(text);
       setResult(res);
@@ -54,19 +62,69 @@ export function Composer({ initialPrompt }: { initialPrompt?: string }) {
 
   async function handleSaveDraft() {
     if (!result) return;
-    await createEmail({
-      recipients,
-      subject: result.subject,
-      content: text,
-      bulletPoints: result.bulletPoints,
-      chartData: result.chart,
-      attachments,
-    });
-    setSaved(true);
+    try {
+      const email = await createEmail({
+        recipients,
+        subject: result.subject,
+        content: text,
+        bulletPoints: result.bulletPoints,
+        chartData: result.chart,
+        attachments,
+        threadId,
+      });
+      setSaved(true);
+      setResult({ ...result, emailId: email.id });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save draft");
+    }
+  }
+
+  async function handleSend() {
+    if (!result) return;
+    setSending(true);
+    setError(null);
+    try {
+      // First save as draft if not saved
+      let emailId = (result as any).emailId;
+      if (!emailId) {
+        const email = await createEmail({
+          recipients,
+          subject: result.subject,
+          content: text,
+          bulletPoints: result.bulletPoints,
+          chartData: result.chart,
+          attachments,
+          threadId,
+        });
+        emailId = email.id;
+      }
+      
+      // Then send it
+      await sendEmail(emailId);
+      
+      // Clear the form
+      setText("");
+      setRecipients([]);
+      setResult(null);
+      setAttachments([]);
+      setSaved(false);
+      
+      // Notify parent
+      if (onEmailSent) onEmailSent();
+      
+      alert("✅ Email sent successfully!");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send email");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Running Summary */}
+      <RunningSummary threadId={threadId} />
+
       <TemplateSelector onSelect={(prompt) => setText(prompt)} />
 
       <div className="rounded-xl border border-black/10 dark:border-white/10 p-4 bg-surface-light dark:bg-surface-dark space-y-3">
@@ -145,9 +203,16 @@ export function Composer({ initialPrompt }: { initialPrompt?: string }) {
               onClick={handleSaveDraft}
               className="rounded-full border border-black/10 dark:border-white/10 px-4 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5"
             >
-              Save as draft
+              Save Draft
             </button>
-            {saved && <span className="text-xs opacity-60">Saved — find it in Inbox.</span>}
+            <button
+              onClick={handleSend}
+              disabled={sending}
+              className="rounded-full bg-green-500 px-6 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40"
+            >
+              {sending ? "Sending…" : "📤 Send"}
+            </button>
+            {saved && <span className="text-xs opacity-60">Draft saved ✓</span>}
           </div>
         </>
       )}

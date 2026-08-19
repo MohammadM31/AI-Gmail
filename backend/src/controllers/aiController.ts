@@ -11,9 +11,16 @@ const processSchema = z.object({ message: z.string().min(1, "message is required
 
 export async function processMessage(req: Request, res: Response, next: NextFunction) {
   try {
+    console.log("🔍 AI Request received:", req.body);
     const { message } = processSchema.parse(req.body);
+    console.log("📝 Message to process:", message);
+    
+    console.log("🤖 Calling Gemini API...");
     const result = await processMessageWithAI(message);
+    console.log("✅ Gemini response received:", result);
+    
     const recipients = await resolveRecipients(req.auth!.userId, result.recipients);
+    console.log("👤 Resolved recipients:", recipients);
 
     await trackEvent(req.auth!.userId, "ai_call");
     await logAudit({
@@ -26,8 +33,11 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
 
     res.json({ ...result, recipients });
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return next(new ApiError(400, err.errors[0]?.message ?? "Invalid input"));
+    console.error("❌❌❌ AI PROCESSING ERROR ❌❌❌");
+    console.error("Error:", err);
+    if (err instanceof Error) {
+      console.error("Message:", err.message);
+      console.error("Stack:", err.stack);
     }
     next(err);
   }
@@ -76,36 +86,27 @@ export async function analyzeTopics(req: Request, res: Response, next: NextFunct
   }
 }
 
-export async function processMessage(req: Request, res: Response, next: NextFunction) {
+// ✅ TEST ENDPOINT - No auth required
+export async function testGenerate(req: Request, res: Response) {
   try {
-    console.log("🔍 AI Request received:", req.body);
-    const { message } = processSchema.parse(req.body);
-    console.log("📝 Message to process:", message);
+    const { message } = req.body;
+    console.log("🧪 Test AI called with:", message);
     
-    console.log("🤖 Calling Gemini API...");
-    const result = await processMessageWithAI(message);
-    console.log("✅ Gemini response received:", result);
-    
-    const recipients = await resolveRecipients(req.auth!.userId, result.recipients);
-    console.log("👤 Resolved recipients:", recipients);
-
-    await trackEvent(req.auth!.userId, "ai_call");
-    await logAudit({
-      userId: req.auth!.userId,
-      action: "ai_process",
-      aiInput: message,
-      aiOutput: result,
-      req,
-    });
-
-    res.json({ ...result, recipients });
-  } catch (err) {
-    console.error("❌❌❌ AI PROCESSING ERROR ❌❌❌");
-    console.error("Error:", err);
-    if (err instanceof Error) {
-      console.error("Message:", err.message);
-      console.error("Stack:", err.stack);
+    if (!message) {
+      return res.status(400).json({ error: "Message is required" });
     }
-    next(err);
+    
+    // Call Gemini directly
+    const result = await processMessageWithAI(message);
+    
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (err) {
+    console.error("❌ Test AI error:", err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Unknown error"
+    });
   }
 }
