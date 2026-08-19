@@ -7,49 +7,71 @@ import { generateInviteCode } from "../utils/inviteCode";
 
 export async function register(req: Request, res: Response, next: NextFunction) {
   try {
+    console.log("🔍 Registration attempt:", req.body);
+    
     const { email, password, name, organizationName, inviteCode } =
       registerSchema.parse(req.body);
-
+    
+    console.log("📝 Calling Supabase auth.signUp...");
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
     });
+    
     if (authError || !authData.user) {
+      console.error("❌ Supabase auth error:", authError);
       throw new ApiError(400, authError?.message ?? "Sign up failed");
     }
+    
+    console.log("✅ Supabase auth success:", authData.user.id);
 
     let organizationId: string;
 
     if (inviteCode) {
-      // Join an existing organization.
+      console.log("🔍 Joining organization with invite code:", inviteCode);
       const { data: org, error: orgError } = await supabase
         .from("Organization")
         .select("id")
         .eq("inviteCode", inviteCode)
         .single();
       if (orgError || !org) {
+        console.error("❌ Organization lookup error:", orgError);
         throw new ApiError(400, "Invalid invite code");
       }
       organizationId = org.id;
     } else {
-      // Create a new organization with a fresh invite code.
+      console.log("🏢 Creating new organization:", organizationName);
+      
+      // ✅ Use Supabase's gen_random_uuid() for invite code
       const { data: org, error: orgError } = await supabase
         .from("Organization")
-        .insert({ name: organizationName, inviteCode: generateInviteCode() })
+        .insert({ 
+          name: organizationName, 
+          inviteCode: crypto.randomBytes(8).toString("hex").toUpperCase().slice(0, 12)
+        })
         .select()
         .single();
-      if (orgError) throw new ApiError(500, orgError.message);
+      if (orgError) {
+        console.error("❌ Organization creation error:", orgError);
+        throw new ApiError(500, orgError.message);
+      }
       organizationId = org.id;
+      console.log("✅ Organization created. ID:", organizationId);
     }
 
+    console.log("👤 Creating user record...");
     const { error: userError } = await supabase.from("User").insert({
       id: authData.user.id,
       email,
       name,
       organizationId,
     });
-    if (userError) throw new ApiError(500, userError.message);
+    if (userError) {
+      console.error("❌ User creation error:", userError);
+      throw new ApiError(500, userError.message);
+    }
 
+    console.log("✅ User registered successfully:", authData.user.id);
     const token = signAppToken(authData.user.id, organizationId);
 
     res.status(201).json({
@@ -57,6 +79,12 @@ export async function register(req: Request, res: Response, next: NextFunction) 
       token,
     });
   } catch (err) {
+    console.error("❌❌❌ REGISTRATION ERROR ❌❌❌");
+    console.error("Error:", err);
+    if (err instanceof Error) {
+      console.error("Message:", err.message);
+      console.error("Stack:", err.stack);
+    }
     next(err);
   }
 }
