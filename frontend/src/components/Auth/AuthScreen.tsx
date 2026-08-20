@@ -30,10 +30,10 @@ export function AuthScreen() {
   function handleDevLogin() {
     useUserStore.getState().setSession(
       {
-        id: "dev-user",
+        id: "22222222-2222-2222-2222-222222222222",
         email: "dev@example.com",
         name: "Developer",
-        organizationId: "dev-org"
+        organizationId: "11111111-1111-1111-1111-111111111111"
       },
       "dev-token"
     );
