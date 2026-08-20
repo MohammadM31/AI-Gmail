@@ -17,6 +17,17 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   }
 
   const token = header.slice("Bearer ".length);
+
+  //Accept dev-token for testing
+  if (token === "dev-token") {
+    req.auth = {
+      userId: "dev-user",
+      organizationId: "dev-org"
+    };
+    console.log("✅ Dev mode: Bypassed auth with dev-token");
+    return next();
+  }
+
   try {
     const secret = process.env.JWT_SECRET;
     if (!secret) throw new Error("JWT_SECRET not configured");

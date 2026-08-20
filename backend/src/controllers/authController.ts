@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import crypto from "crypto";
 import { supabase } from "../utils/supabaseClient";
 import { ApiError } from "../middleware/errorHandler";
 import { registerSchema, loginSchema } from "../utils/validators";
