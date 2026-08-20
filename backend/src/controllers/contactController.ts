@@ -42,7 +42,18 @@ export async function createContact(req: Request, res: Response, next: NextFunct
       .insert({ ...input, userId: req.auth!.userId })
       .select()
       .single();
-    if (error) throw new ApiError(409, error.message); // likely unique constraint
+    if (error) {
+      // Postgres 23505 = unique_violation — this contact (by email,
+      // per the userId+email unique constraint) already exists for
+      // this user. Any other DB error (missing table/column, RLS
+      // denial, connection issue, etc.) was previously mislabeled as
+      // 409 too, which made real failures look like "already exists"
+      // and hid the actual cause.
+      if (error.code === "23505") {
+        throw new ApiError(409, "A contact with this email already exists");
+      }
+      throw new ApiError(500, error.message);
+    }
     res.status(201).json(data);
   } catch (err) {
     next(err);

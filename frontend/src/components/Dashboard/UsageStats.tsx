@@ -10,10 +10,26 @@ const LABELS: Record<string, string> = {
 
 export function UsageStats() {
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getUsage().then((r) => setCounts(r.counts)).catch(() => {});
+    load();
   }, []);
+
+  function load() {
+    setError(null);
+    getUsage()
+      .then((r) => setCounts(r.counts))
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load usage stats"));
+  }
+
+  if (error) {
+    return (
+      <p className="text-sm text-highlight">
+        {error} <button className="underline" onClick={load}>Retry</button>
+      </p>
+    );
+  }
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

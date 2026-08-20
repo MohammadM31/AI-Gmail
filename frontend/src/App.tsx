@@ -20,6 +20,7 @@ function App() {
   const [activeView, setActiveView] = useState<NavView>("compose");
   const [selectedEmail, setSelectedEmail] = useState<EmailItem | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   if (!user) {
     return (
@@ -105,17 +106,31 @@ function App() {
   return (
     <ErrorBoundary>
       <div className="flex h-screen bg-bg-light dark:bg-bg-dark text-ink-light dark:text-ink-dark">
-        <Sidebar active={activeView} onSelect={setActiveView} />
+        <Sidebar
+          active={activeView}
+          onSelect={setActiveView}
+          mobileOpen={mobileNavOpen}
+          onMobileClose={() => setMobileNavOpen(false)}
+        />
         <div className="flex-1 flex flex-col overflow-hidden">
           <header className="flex items-center justify-between px-6 py-3 border-b border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark">
-            <h1 className="text-lg font-semibold">
-              {activeView === "compose" && "Compose"}
-              {activeView === "inbox" && "Inbox"}
-              {activeView === "contacts" && "Contacts"}
-              {activeView === "templates" && "Templates"}
-              {activeView === "analytics" && "Analytics"}
-              {activeView === "settings" && "Settings"}
-            </h1>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setMobileNavOpen(true)}
+                aria-label="Open menu"
+                className="md:hidden rounded-lg p-1.5 -ml-1.5 hover:bg-black/5 dark:hover:bg-white/5 text-xl leading-none"
+              >
+                ☰
+              </button>
+              <h1 className="text-lg font-semibold">
+                {activeView === "compose" && "Compose"}
+                {activeView === "inbox" && "Inbox"}
+                {activeView === "contacts" && "Contacts"}
+                {activeView === "templates" && "Templates"}
+                {activeView === "analytics" && "Analytics"}
+                {activeView === "settings" && "Settings"}
+              </h1>
+            </div>
             <ThemeToggle />
           </header>
           <main className="flex-1 overflow-y-auto p-6">

@@ -10,7 +10,7 @@ import type {
 import { useUserStore } from "../stores/userStore";
 
 // ✅ Force to use the real backend, NOT mock
-const API_URL = "https://ai-gmail-lw6d.onrender.com";
+export const API_URL = "https://ai-gmail-lw6d.onrender.com";
 export const USE_MOCK = false; // ← Force real API calls
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -34,26 +34,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 // ---- AI ----
 export async function processMessage(message: string): Promise<AiProcessResult> {
-  // ✅ Use the public test endpoint that doesn't require auth
-  const response = await fetch(`${API_URL}/api/ai/test`, {
+  // Use the authenticated endpoint, not /api/ai/test — the test route
+  // exists only for pre-auth smoke-testing and skips recipient
+  // resolution, audit logging, and usage tracking entirely, since it
+  // has no req.auth to resolve contacts or attribute events against.
+  return request<AiProcessResult>("/api/ai/process", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error?.error || `AI request failed (${response.status})`);
-  }
-
-  const data = await response.json();
-  
-  // The test endpoint returns { success: true, data: AiProcessResult }
-  if (data.success && data.data) {
-    return data.data;
-  }
-  
-  throw new Error("Invalid response from AI test endpoint");
 }
 
 // ---- Auth ----

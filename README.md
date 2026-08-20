@@ -131,3 +131,103 @@ public, since access goes through the signed-URL endpoints only.
 
 `ENCRYPTION_KEY` (backend/.env) must be a 32-byte value, base64-encoded —
 e.g. generate one with `openssl rand -base64 32`.
+
+
+
+## Business Requirements
+
+### Problem Statement
+In today's fast-paced business environment, speed-to-action is critical. However, traditional email communication remains inefficient for quickly converting ideas into actions. Despite AI advancements in email (paraphrasing, bullet summaries), the core email experience remains text-heavy and lacks visual elements, causing delays in decision-making and action.
+
+### Goal
+To create an AI-powered email application that accelerates idea communication and decision-making by automatically converting rough prompts into structured, visually enhanced emails.
+
+### Core Requirements
+
+#### 1. User Input
+- Users can **type** or **speak** (voice input) their message
+- Input is a rough, informal prompt (not a polished email)
+- Example: *"Send quarterly sales report to John showing 20% growth"*
+
+#### 2. AI Processing
+The AI (Gemini) must automatically:
+- **Extract recipients** from the prompt (e.g., "John" → John Doe)
+- **Generate a subject line** relevant to the content
+- **Create 3-7 concise bullet points** summarizing key information
+- **Generate a visual representation** (chart/graph) if numeric data is present
+- **Detect tone** (professional/casual/urgent)
+
+#### 3. Output Display
+- **Split view layout**:
+  - Left: Editable bullet-point summary
+  - Right: AI-generated chart/visual
+- **Running summary** above the composer (AI-generated thread summary)
+- **Recipient chips** displayed above the composer
+
+#### 4. User Review & Send
+- Users can **edit** bullet points before sending
+- Users can **confirm by clicking "SEND"**
+- Users can **save as draft** for later
+
+#### 5. Email Management
+- **Thread view** showing conversation history
+- **Inbox** listing all sent/ drafted emails
+- **Search** functionality within emails
+- **Delete** emails (soft delete)
+
+#### 6. Contacts & Recipients
+- AI extracts recipient names from prompts
+- Auto-suggest recipients from saved contacts
+- Add/remove contacts manually
+- Contact usage tracking (for suggestions)
+
+#### 7. Templates
+- Pre-built templates: "Sales Report", "Meeting Summary", "Project Update"
+- Users can save custom templates
+- Templates auto-fill the composer prompt
+
+#### 8. Analytics
+- Track usage: AI calls, emails sent, voice inputs, charts generated
+- Display most frequent conversation topics
+- Export analytics as CSV
+
+#### 9. User Experience
+- **Dark/Light theme toggle** (persistent)
+- **Mobile-responsive** design
+- **Gmail-like** email layout with sidebar navigation
+- **Real-time** updates (Socket.io)
+
+### Technology Stack
+
+| Component | Technology |
+|-----------|------------|
+| **Frontend** | React + TypeScript + Vite + Tailwind CSS |
+| **State Management** | Zustand |
+| **Backend** | Node.js + Express + TypeScript |
+| **Database** | Supabase (PostgreSQL) |
+| **AI** | Google Gemini API |
+| **Voice Input** | Web Speech API |
+| **Charts** | Chart.js |
+| **Real-time** | Socket.io |
+| **Deployment** | Vercel (Frontend) + Render (Backend) |
+
+### Feature Status
+
+| Feature | Status |
+|---------|--------|
+| Voice Input | ✅ Complete |
+| AI Generation (Bullets + Charts) | ✅ Complete |
+| Split View | ✅ Complete |
+| Send Email | ✅ Complete |
+| Save Draft | ✅ Complete |
+| Inbox | ✅ Complete |
+| Dark/Light Theme | ✅ Complete |
+| Templates | ⚠️ Partially Complete (Mock Data) |
+| Contacts | ⚠️ Partially Complete (CRUD in progress) |
+| Running Summary | ⚠️ Partially Complete (Component exists) |
+| Thread View | ⚠️ Partially Complete (Component exists) |
+| Analytics | ⚠️ Partially Complete (UI exists) |
+
+### Key User Flows
+
+#### Flow 1: Generate and Send Email
