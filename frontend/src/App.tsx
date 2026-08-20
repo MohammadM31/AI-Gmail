@@ -42,7 +42,6 @@ function App() {
   }
 
   function renderContent() {
-    // If viewing a specific thread
     if (selectedThreadId) {
       return (
         <ThreadView
@@ -52,7 +51,6 @@ function App() {
       );
     }
 
-    // If viewing a specific email
     if (selectedEmail) {
       return (
         <div className="space-y-4">
@@ -84,7 +82,6 @@ function App() {
       );
     }
 
-    // Main views
     switch (activeView) {
       case "compose":
         return <Composer onEmailSent={() => {}} />;
