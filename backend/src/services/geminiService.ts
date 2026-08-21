@@ -6,7 +6,7 @@ export interface AiProcessResult {
   subject: string;
   bulletPoints: string[];
   chart: {
-    type: "bar" | "line" | "pie";
+    type: string; // Now supports any chart.js type: bar, line, pie, doughnut, radar, polarArea, scatter, bubble
     title: string;
     labels: string[];
     values: number[];
@@ -18,26 +18,55 @@ const genAI = process.env.GEMINI_API_KEY
   ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
   : null;
 
-const PROMPT_TEMPLATE = (input: string) => `
+/**
+ * Builds a dynamic prompt with contact list and flexible bullet count
+ */
+function buildPrompt(input: string, contacts: string[], contentLength: number): string {
+  // Determine bullet count based on content length
+  let bulletGuidance: string;
+  if (contentLength > 300) {
+    bulletGuidance = "8 to 12 concise bullet points covering all key information";
+  } else if (contentLength > 150) {
+    bulletGuidance = "5 to 8 concise bullet points covering the main points";
+  } else {
+    bulletGuidance = "2 to 4 concise bullet points summarizing the key message";
+  }
+
+  const contactList = contacts.length > 0 
+    ? `The user has the following contacts: ${contacts.join(', ')}.` 
+    : 'The user has no contacts saved yet.';
+
+  return `
 You are an assistant that converts a rough email brief into structured data.
+
+${contactList}
+CRITICAL: Only extract recipient names that exactly match or closely match names in this contact list. If a name in the text doesn't match any contact, DO NOT include it in the recipients array. If no valid recipients are found, return an empty recipients array.
+
 Return ONLY valid JSON (no markdown fences) matching exactly this shape:
 
 {
-  "recipients": [{"name": string, "email": string | null}],
-  "subject": string,
-  "bulletPoints": string[],   // 3 to 7 concise bullet points
+  "recipients": [{"name": string, "email": string | null}],  // Only contacts from the list above
+  "subject": string,  // Clear, professional subject line
+  "bulletPoints": string[],  // ${bulletGuidance}
   "chart": {
-    "type": "bar" | "line" | "pie",
+    "type": "bar" | "line" | "pie" | "doughnut" | "radar" | "polarArea" | "scatter" | "bubble",
     "title": string,
     "labels": string[],
     "values": number[]
-  } | null,                   // null if no numeric/trend data is present
+  } | null,  // Choose the best chart type for the data. Use:
+             // - "line" for trends over time
+             // - "bar" for comparisons across categories
+             // - "pie" or "doughnut" for parts of a whole
+             // - "radar" for multi-variable comparison
+             // - "scatter" or "bubble" for distribution/relationship
+             // - "polarArea" for proportional data
   "tone": "professional" | "casual" | "urgent"
 }
 
 Message to process:
 """${input}"""
 `;
+}
 
 /**
  * Calls Gemini to turn free-form text into structured email data.
@@ -45,7 +74,8 @@ Message to process:
  * and surface a clear error rather than silently degrading.
  */
 export async function processMessageWithAI(
-  input: string
+  input: string,
+  contacts: string[] = []
 ): Promise<AiProcessResult> {
   if (!genAI) {
     throw new Error(
@@ -53,14 +83,31 @@ export async function processMessageWithAI(
     );
   }
 
+  const contentLength = input.length;
+  const prompt = buildPrompt(input, contacts, contentLength);
+
   const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
-  const result = await model.generateContent(PROMPT_TEMPLATE(input));
+  const result = await model.generateContent(prompt);
   const text = result.response.text().trim();
 
   const cleaned = text.replace(/^```json\s*|```$/g, "").trim();
 
   try {
-    return JSON.parse(cleaned) as AiProcessResult;
+    const parsed = JSON.parse(cleaned) as AiProcessResult;
+    
+    // Validate that recipients only contain contacts from the list
+    if (contacts.length > 0 && parsed.recipients.length > 0) {
+      const validRecipients = parsed.recipients.filter((r) =>
+        contacts.some((c) => c.toLowerCase() === r.name.toLowerCase())
+      );
+      if (validRecipients.length === 0) {
+        parsed.recipients = [];
+      } else {
+        parsed.recipients = validRecipients;
+      }
+    }
+    
+    return parsed;
   } catch (err) {
     logger.error({ err, raw: text }, "Failed to parse Gemini response as JSON");
     throw new Error("AI response was not valid JSON");

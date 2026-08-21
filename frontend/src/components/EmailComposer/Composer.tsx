@@ -25,6 +25,9 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ✅ Check if there are valid recipients
+  const hasValidRecipients = recipients.length > 0;
+
   async function handleGenerate() {
     if (!text.trim()) return;
     setLoading(true);
@@ -34,7 +37,12 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
     try {
       const res = await processMessage(text);
       setResult(res);
-      if (recipients.length === 0) setRecipients(res.recipients);
+      // ✅ Only set recipients if AI found valid ones
+      if (res.recipients && res.recipients.length > 0) {
+        setRecipients(res.recipients);
+      } else if (res._warning) {
+        setError(res._warning);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -62,6 +70,11 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
 
   async function handleSaveDraft() {
     if (!result) return;
+    // ✅ Validate recipients before saving draft
+    if (!hasValidRecipients) {
+      setError("Please add at least one valid recipient before saving.");
+      return;
+    }
     try {
       const email = await createEmail({
         recipients,
@@ -81,10 +94,14 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
 
   async function handleSend() {
     if (!result) return;
+    // ✅ Validate recipients before sending
+    if (!hasValidRecipients) {
+      setError("Please add at least one valid recipient before sending.");
+      return;
+    }
     setSending(true);
     setError(null);
     try {
-      // First save as draft if not saved
       let emailId = (result as any).emailId;
       if (!emailId) {
         const email = await createEmail({
@@ -98,20 +115,17 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
         });
         emailId = email.id;
       }
-      
-      // Then send it
+
       await sendEmail(emailId);
-      
-      // Clear the form
+
       setText("");
       setRecipients([]);
       setResult(null);
       setAttachments([]);
       setSaved(false);
-      
-      // Notify parent
+
       if (onEmailSent) onEmailSent();
-      
+
       alert("✅ Email sent successfully!");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send email");
@@ -122,7 +136,6 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Running Summary */}
       <RunningSummary threadId={threadId} />
 
       <TemplateSelector onSelect={(prompt) => setText(prompt)} />
@@ -201,17 +214,29 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
           <div className="flex items-center gap-3">
             <button
               onClick={handleSaveDraft}
-              className="rounded-full border border-black/10 dark:border-white/10 px-4 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5"
+              disabled={!hasValidRecipients}
+              className={`rounded-full border px-4 py-1.5 text-sm ${
+                !hasValidRecipients
+                  ? "opacity-40 cursor-not-allowed"
+                  : "hover:bg-black/5 dark:hover:bg-white/5"
+              }`}
             >
               Save Draft
             </button>
             <button
               onClick={handleSend}
-              disabled={sending}
-              className="rounded-full bg-green-500 px-6 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40"
+              disabled={sending || !hasValidRecipients}
+              className={`rounded-full px-6 py-1.5 text-sm font-medium text-white ${
+                !hasValidRecipients || sending
+                  ? "opacity-40 cursor-not-allowed bg-gray-400"
+                  : "bg-green-500 hover:opacity-90"
+              }`}
             >
               {sending ? "Sending…" : "📤 Send"}
             </button>
+            {!hasValidRecipients && (
+              <span className="text-xs text-highlight">⚠️ Add a valid recipient</span>
+            )}
             {saved && <span className="text-xs opacity-60">Draft saved ✓</span>}
           </div>
         </>

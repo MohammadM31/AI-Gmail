@@ -57,6 +57,34 @@ export async function createEmailHandler(
 ) {
   try {
     const input = emailCreateSchema.parse(req.body);
+
+    // ✅ Validate that recipients exist in contacts
+    if (!input.recipients || input.recipients.length === 0) {
+      throw new ApiError(400, "At least one valid recipient is required to send an email.");
+    }
+
+    // ✅ Check if recipients are valid contacts
+    const { data: contacts, error: contactsError } = await supabase
+      .from("Contact")
+      .select("name, email")
+      .eq("userId", req.auth!.userId);
+
+    if (contactsError) {
+      throw new ApiError(500, "Failed to validate recipients.");
+    }
+
+    const contactNames = contacts?.map((c) => c.name.toLowerCase()) ?? [];
+    const invalidRecipients = input.recipients.filter(
+      (r) => !contactNames.includes(r.name.toLowerCase())
+    );
+
+    if (invalidRecipients.length > 0) {
+      throw new ApiError(
+        400,
+        `Invalid recipients: ${invalidRecipients.map((r) => r.name).join(", ")}. Please add them to your contacts first.`
+      );
+    }
+
     const email = await createEmail({ senderId: req.auth!.userId, ...input });
     if (input.chartData) await trackEvent(req.auth!.userId, "chart_generated");
     res.status(201).json(email);
@@ -109,7 +137,6 @@ export async function sendEmail(req: Request, res: Response, next: NextFunction)
     await trackEvent(req.auth!.userId, "email_sent");
     await logAudit({ userId: req.auth!.userId, action: "email_sent", emailId: data.id, req });
 
-    // Notify any connected clients in this org (e.g. recipients' inbox view).
     getIo()?.to(`org:${req.auth!.organizationId}`).emit("email:sent", { id: data.id });
 
     res.json(decryptEmailContent(data));
@@ -145,7 +172,8 @@ export async function summarizeThread(req: Request, res: Response, next: NextFun
     const combined = decrypted.join("\n---\n");
 
     const result = await processMessageWithAI(
-      `Summarize this email thread in 3-5 bullet points:\n${combined}`
+      `Summarize this email thread in 3-5 bullet points:\n${combined}`,
+      []
     );
     res.json({ summary: result.bulletPoints });
   } catch (err) {

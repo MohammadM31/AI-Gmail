@@ -14,11 +14,35 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
     console.log("🔍 AI Request received:", req.body);
     const { message } = processSchema.parse(req.body);
     console.log("📝 Message to process:", message);
-    
-    console.log("🤖 Calling Gemini API...");
-    const result = await processMessageWithAI(message);
+
+    // ✅ Fetch user's contacts first
+    const { data: contacts, error: contactsError } = await supabase
+      .from("Contact")
+      .select("name")
+      .eq("userId", req.auth!.userId);
+
+    if (contactsError) {
+      console.error("❌ Failed to fetch contacts:", contactsError);
+      // Continue without contacts (just won't validate recipients)
+    }
+
+    const contactNames = (contacts ?? []).map((c) => c.name);
+    console.log("👤 User contacts:", contactNames);
+
+    console.log("🤖 Calling Gemini API with contact validation...");
+    const result = await processMessageWithAI(message, contactNames);
     console.log("✅ Gemini response received:", result);
-    
+
+    // ✅ If no valid recipients, return early with empty recipients
+    if (result.recipients.length === 0) {
+      console.log("⚠️ No valid recipients found in contacts");
+      return res.json({
+        ...result,
+        recipients: [],
+        _warning: "No valid recipients found. Please add a contact or try again."
+      });
+    }
+
     const recipients = await resolveRecipients(req.auth!.userId, result.recipients);
     console.log("👤 Resolved recipients:", recipients);
 
@@ -47,7 +71,8 @@ export async function generateChart(req: Request, res: Response, next: NextFunct
   try {
     const { message } = processSchema.parse(req.body);
     const result = await processMessageWithAI(
-      `Extract only chart-worthy numeric/trend data from this text as chart JSON:\n${message}`
+      `Extract only chart-worthy numeric/trend data from this text as chart JSON:\n${message}`,
+      []
     );
     res.json(result.chart);
   } catch (err) {
@@ -76,9 +101,8 @@ export async function analyzeTopics(req: Request, res: Response, next: NextFunct
   try {
     const { messages } = z.object({ messages: z.array(z.string()) }).parse(req.body);
     const result = await processMessageWithAI(
-      `Identify the 3-5 most frequent topics across these messages, as short bullet points:\n${messages.join(
-        "\n"
-      )}`
+      `Identify the 3-5 most frequent topics across these messages, as short bullet points:\n${messages.join("\n")}`,
+      []
     );
     res.json({ topics: result.bulletPoints });
   } catch (err) {
@@ -91,14 +115,14 @@ export async function testGenerate(req: Request, res: Response) {
   try {
     const { message } = req.body;
     console.log("🧪 Test AI called with:", message);
-    
+
     if (!message) {
       return res.status(400).json({ error: "Message is required" });
     }
-    
-    // Call Gemini directly
-    const result = await processMessageWithAI(message);
-    
+
+    // For test endpoint, we don't have contacts, so pass empty array
+    const result = await processMessageWithAI(message, []);
+
     res.json({
       success: true,
       data: result

@@ -3,13 +3,13 @@ import { z } from "zod";
 export const emailCreateSchema = z.object({
   recipients: z
     .array(z.object({ name: z.string(), email: z.string().email().nullable() }))
-    .min(1),
+    .min(1, "At least one valid recipient is required"), // ✅ Enforce at least 1 recipient
   subject: z.string().min(1),
   content: z.string().min(1),
-  bulletPoints: z.array(z.string()).min(1),
+  bulletPoints: z.array(z.string()), // ✅ Removed min(1) - can be empty for very short emails
   chartData: z
     .object({
-      type: z.enum(["bar", "line", "pie"]),
+      type: z.string(), // ✅ Allow any chart type (bar, line, pie, doughnut, radar, polarArea, scatter, bubble)
       title: z.string(),
       labels: z.array(z.string()),
       values: z.array(z.number()),
@@ -48,13 +48,12 @@ export const registerSchema = z
     email: z.string().email(),
     password: z.string().min(8, "Password must be at least 8 characters"),
     name: z.string().min(1),
-    // Provide organizationName to create a new org, or inviteCode to
-    // join an existing one — exactly one of the two is required.
     organizationName: z.string().min(1).optional(),
     inviteCode: z.string().min(1).optional(),
   })
   .refine((data) => Boolean(data.organizationName) !== Boolean(data.inviteCode), {
-    message: "Provide either an organization name (to create one) or an invite code (to join one) — not both",
+    message:
+      "Provide either an organization name (to create one) or an invite code (to join one) — not both",
     path: ["organizationName"],
   });
 

@@ -1,5 +1,5 @@
 export interface ChartData {
-  type: "bar" | "line" | "pie";
+  type: string; // ✅ Now supports any chart.js type
   title: string;
   labels: string[];
   values: number[];
@@ -11,7 +11,8 @@ export interface AiProcessResult {
   bulletPoints: string[];
   chart: ChartData | null;
   tone: "professional" | "casual" | "urgent";
-  emailId?: string; // ✅ ADDED
+  emailId?: string;
+  _warning?: string; // ✅ Added for no-recipient warnings
 }
 
 export interface User {
@@ -30,7 +31,7 @@ export interface Attachment {
 
 export interface EmailItem {
   id: string;
-  senderId?: string; // ✅ ADDED
+  senderId?: string;
   recipients: { name: string; email: string | null }[];
   subject: string;
   content: string;
