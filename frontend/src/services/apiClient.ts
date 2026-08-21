@@ -155,6 +155,47 @@ export async function listContacts() {
   return request<Contact[]>("/api/contacts");
 }
 
+export async function getContact(id: string) {
+  return request<Contact>(`/api/contacts/${id}`);
+}
+
+export async function getContactSummary(id: string) {
+  return request<{
+    contact: string;
+    summary: string[];
+    emailCount: number;
+    emails: {
+      id: string;
+      subject: string;
+      content: string;
+      bulletPoints: string[];
+      createdAt: string;
+      status: string;
+      threadId: string | null;
+    }[];
+  }>(`/api/contacts/${id}/summary`);
+}
+
+export async function getContactThreads(id: string) {
+  return request<{
+    contact: string;
+    threads: {
+      threadId: string;
+      count: number;
+      lastMessage: any;
+      messages: {
+        id: string;
+        subject: string;
+        content: string;
+        bulletPoints: string[];
+        createdAt: string;
+        status: string;
+      }[];
+    }[];
+    totalEmails: number;
+  }>(`/api/contacts/${id}/threads`);
+}
+
 export async function createContact(input: { name: string; email: string; organization?: string }) {
   return request<Contact>("/api/contacts", { method: "POST", body: JSON.stringify(input) });
 }
