@@ -65,6 +65,13 @@ export interface Template {
   prompt: string;
   isPublic: boolean;
   usageCount: number;
+  recipientId?: string | null;
+  scheduleDate?: string | null;
+  autoSend?: boolean;
+  isScheduled?: boolean;
+  lastSentAt?: string | null;
+  // For display purposes
+  recipientName?: string;
 }
 
 export type NavView =

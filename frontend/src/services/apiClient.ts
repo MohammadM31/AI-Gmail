@@ -209,8 +209,54 @@ export async function listTemplates() {
   return request<Template[]>("/api/templates");
 }
 
-export async function createTemplate(input: { name: string; prompt: string; description?: string }) {
-  return request<Template>("/api/templates", { method: "POST", body: JSON.stringify(input) });
+export async function getTemplate(id: string) {
+  return request<Template>(`/api/templates/${id}`);
+}
+
+export async function createTemplate(input: { 
+  name: string; 
+  prompt: string; 
+  description?: string;
+  recipientId?: string;
+  scheduleDate?: string;
+  autoSend?: boolean;
+}) {
+  return request<Template>("/api/templates", { 
+    method: "POST", 
+    body: JSON.stringify(input) 
+  });
+}
+
+export async function updateTemplate(id: string, input: Partial<{
+  name: string;
+  prompt: string;
+  description?: string;
+  recipientId?: string;
+  scheduleDate?: string;
+  autoSend?: boolean;
+}>) {
+  return request<Template>(`/api/templates/${id}`, { 
+    method: "PUT", 
+    body: JSON.stringify(input) 
+  });
+}
+
+export async function deleteTemplate(id: string) {
+  return request<void>(`/api/templates/${id}`, { method: "DELETE" });
+}
+
+// ✅ NEW: Send scheduled templates
+export async function sendScheduledTemplates() {
+  return request<{ processed: number; results: any[] }>("/api/templates/send-scheduled", {
+    method: "POST",
+  });
+}
+
+// ✅ NEW: Send template now
+export async function sendTemplateNow(id: string) {
+  return request<{ success: boolean; emailId: string }>(`/api/templates/${id}/send`, {
+    method: "POST",
+  });
 }
 
 // ---- Analytics ----
