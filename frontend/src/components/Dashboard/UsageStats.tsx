@@ -8,19 +8,50 @@ const LABELS: Record<string, string> = {
   chart_generated: "Charts generated",
 };
 
-export function UsageStats() {
+interface UsageStatsProps {
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export function UsageStats({ dateFrom, dateTo }: UsageStatsProps) {
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [dateFrom, dateTo]);
 
-  function load() {
+  async function load() {
+    setLoading(true);
     setError(null);
-    getUsage()
-      .then((r) => setCounts(r.counts))
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load usage stats"));
+    try {
+      const params: { dateFrom?: string; dateTo?: string } = {};
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
+      const data = await getUsage(params);
+      setCounts(data.counts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load usage stats");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {Object.entries(LABELS).map(([key, label]) => (
+          <div
+            key={key}
+            className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4 text-center animate-pulse"
+          >
+            <div className="h-8 w-12 mx-auto bg-gray-300 dark:bg-gray-700 rounded"></div>
+            <div className="h-3 w-16 mx-auto mt-1 bg-gray-300 dark:bg-gray-700 rounded"></div>
+          </div>
+        ))}
+      </div>
+    );
   }
 
   if (error) {

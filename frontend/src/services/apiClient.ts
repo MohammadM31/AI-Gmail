@@ -260,16 +260,78 @@ export async function sendTemplateNow(id: string) {
 }
 
 // ---- Analytics ----
-export async function getUsage() {
-  return request<{ counts: Record<string, number> }>("/api/analytics/usage");
+export async function getUsage(params?: { dateFrom?: string; dateTo?: string }) {
+  const qs = params
+    ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+    : "";
+  return request<{ counts: Record<string, number>; recent: any[] }>(
+    `/api/analytics/usage${qs}`
+  );
 }
 
-export async function getTopics() {
-  return request<{ topics: string[] }>("/api/analytics/topics");
+export async function getTopics(params?: {
+  contactId?: string;
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+}) {
+  const qs = params
+    ? `?${new URLSearchParams(
+        Object.entries(params).reduce((acc, [k, v]) => {
+          if (v !== undefined && v !== null && v !== "") {
+            acc[k] = String(v);
+          }
+          return acc;
+        }, {} as Record<string, string>)
+      ).toString()}`
+    : "";
+  return request<{
+    topics: { topic: string; count: number }[];
+    totalEmails: number;
+    filters: any;
+  }>(`/api/analytics/topics${qs}`);
 }
 
-// ---- Thread Summary ----
-export async function summarizeThread(threadId: string) {
-  return request<{ summary: string[] }>(`/api/emails/summary/${threadId}`);
+export async function getTopicTrends(params?: { contactId?: string; months?: number }) {
+  const qs = params
+    ? `?${new URLSearchParams(
+        Object.entries(params).reduce((acc, [k, v]) => {
+          if (v !== undefined && v !== null && v !== "") {
+            acc[k] = String(v);
+          }
+          return acc;
+        }, {} as Record<string, string>)
+      ).toString()}`
+    : "";
+  return request<{
+    labels: string[];
+    data: number[];
+    total: number;
+  }>(`/api/analytics/topics/trends${qs}`);
+}
+
+export async function exportAnalytics(params?: { startDate?: string; endDate?: string }) {
+  const qs = params
+    ? `?${new URLSearchParams(
+        Object.entries(params).reduce((acc, [k, v]) => {
+          if (v !== undefined && v !== null && v !== "") {
+            acc[k] = String(v);
+          }
+          return acc;
+        }, {} as Record<string, string>)
+      ).toString()}`
+    : "";
+  const token = useUserStore.getState().token;
+  const res = await fetch(`${API_URL}/api/analytics/export${qs}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`Export failed (${res.status})`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `analytics_${new Date().toISOString().split("T")[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
