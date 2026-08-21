@@ -118,8 +118,8 @@ export async function getAttachmentUrl(path: string) {
 }
 
 // ---- Emails ----
-export async function listEmails(q?: string) {
-  const qs = q ? `?q=${encodeURIComponent(q)}` : "";
+export async function listEmails(params?: string) {
+  const qs = params ? `?${params}` : "";
   return request<{ items: EmailItem[]; total: number }>(`/api/emails${qs}`);
 }
 
@@ -185,3 +185,4 @@ export async function getTopics() {
 export async function summarizeThread(threadId: string) {
   return request<{ summary: string[] }>(`/api/emails/summary/${threadId}`);
 }
+

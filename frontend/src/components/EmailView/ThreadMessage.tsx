@@ -3,9 +3,34 @@ import { EmailItem } from "../../types";
 interface ThreadMessageProps {
   message: EmailItem;
   isCurrentUser: boolean;
+  senderName: string;
 }
 
-export function ThreadMessage({ message, isCurrentUser }: ThreadMessageProps) {
+export function ThreadMessage({ message, isCurrentUser, senderName }: ThreadMessageProps) {
+  const getFullTimestamp = (date: string) => {
+    return new Date(date).toLocaleString([], {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
+
+  const formatTimestamp = (date: string) => {
+    const d = new Date(date);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    
+    if (isToday) {
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } else {
+      return d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+    }
+  };
+
   return (
     <div className={`flex ${isCurrentUser ? "justify-end" : "justify-start"}`}>
       <div
@@ -17,10 +42,10 @@ export function ThreadMessage({ message, isCurrentUser }: ThreadMessageProps) {
       >
         <div className="flex items-center gap-2 mb-1">
           <span className="text-xs font-medium">
-            {isCurrentUser ? "You" : message.senderId}
+            {senderName}
           </span>
-          <span className="text-xs opacity-60">
-            {new Date(message.createdAt).toLocaleString()}
+          <span className="text-xs opacity-60" title={getFullTimestamp(message.createdAt)}>
+            {formatTimestamp(message.createdAt)}
           </span>
         </div>
         <p className="text-sm">{message.content}</p>

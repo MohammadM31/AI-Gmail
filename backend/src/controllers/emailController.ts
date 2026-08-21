@@ -10,7 +10,17 @@ import { getIo } from "../realtime/socket";
 
 export async function listEmails(req: Request, res: Response, next: NextFunction) {
   try {
-    const { page = "1", pageSize = "20", q } = req.query as Record<string, string>;
+    const {
+      page = "1",
+      pageSize = "20",
+      q,
+      filterType = "all",
+      status,
+      dateFrom,
+      dateTo,
+      sortBy = "newest",
+    } = req.query as Record<string, string>;
+
     const from = (Number(page) - 1) * Number(pageSize);
     const to = from + Number(pageSize) - 1;
 
@@ -18,18 +28,70 @@ export async function listEmails(req: Request, res: Response, next: NextFunction
       .from("Email")
       .select("*", { count: "exact" })
       .eq("senderId", req.auth!.userId)
-      .is("deletedAt", null)
-      .order("createdAt", { ascending: false })
-      .range(from, to);
+      .is("deletedAt", null);
 
+    // --- Search filters ---
     if (q) {
-      query = query.textSearch("subject", q, { type: "websearch" });
+      if (filterType === "subject") {
+        query = query.textSearch("subject", q, { type: "websearch" });
+      } else if (filterType === "recipient") {
+        // Search in recipients JSON
+        query = query.filter("recipients", "cs", `[{"name":"${q}"}]`);
+      } else if (filterType === "status") {
+        query = query.eq("status", q);
+      } else {
+        // Default: search in subject
+        query = query.textSearch("subject", q, { type: "websearch" });
+      }
     }
+
+    // --- Status filter ---
+    if (status && status !== "all") {
+      query = query.eq("status", status);
+    }
+
+    // --- Date range filter ---
+    if (dateFrom) {
+      query = query.gte("createdAt", new Date(dateFrom).toISOString());
+    }
+    if (dateTo) {
+      // Set end of day for inclusive filtering
+      const endDate = new Date(dateTo);
+      endDate.setHours(23, 59, 59, 999);
+      query = query.lte("createdAt", endDate.toISOString());
+    }
+
+    // --- Sorting ---
+    switch (sortBy) {
+      case "newest":
+        query = query.order("createdAt", { ascending: false });
+        break;
+      case "oldest":
+        query = query.order("createdAt", { ascending: true });
+        break;
+      case "subject-asc":
+        query = query.order("subject", { ascending: true });
+        break;
+      case "subject-desc":
+        query = query.order("subject", { ascending: false });
+        break;
+      case "status":
+        query = query.order("status", { ascending: true });
+        break;
+      default:
+        query = query.order("createdAt", { ascending: false });
+    }
+
+    // --- Pagination ---
+    query = query.range(from, to);
 
     const { data, error, count } = await query;
     if (error) throw new ApiError(500, error.message);
 
-    res.json({ items: (data ?? []).map(decryptEmailContent), total: count ?? 0 });
+    res.json({
+      items: (data ?? []).map(decryptEmailContent),
+      total: count ?? 0,
+    });
   } catch (err) {
     next(err);
   }
@@ -58,12 +120,11 @@ export async function createEmailHandler(
   try {
     const input = emailCreateSchema.parse(req.body);
 
-    // ✅ Validate that recipients exist in contacts
+    // ✅ Validate recipients exist
     if (!input.recipients || input.recipients.length === 0) {
       throw new ApiError(400, "At least one valid recipient is required to send an email.");
     }
 
-    // ✅ Check if recipients are valid contacts
     const { data: contacts, error: contactsError } = await supabase
       .from("Contact")
       .select("name, email")

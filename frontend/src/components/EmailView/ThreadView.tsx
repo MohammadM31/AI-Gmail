@@ -16,7 +16,7 @@ export function ThreadView({ threadId, onBack }: ThreadViewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [summaryVersion, setSummaryVersion] = useState(0);
-  const currentUserId = useUserStore((s) => s.user?.id);
+  const currentUser = useUserStore((s) => s.user);
 
   const loadThread = useCallback(async () => {
     setLoading(true);
@@ -31,10 +31,6 @@ export function ThreadView({ threadId, onBack }: ThreadViewProps) {
     }
   }, [threadId]);
 
-  // Reply sent → reload messages AND force RunningSummary to refetch.
-  // RunningSummary only refetches when its threadId prop changes, but
-  // a reply doesn't change the thread's id, so without this the
-  // summary silently goes stale the moment someone replies.
   async function handleReplySent() {
     await loadThread();
     setSummaryVersion((v) => v + 1);
@@ -43,6 +39,13 @@ export function ThreadView({ threadId, onBack }: ThreadViewProps) {
   useEffect(() => {
     loadThread();
   }, [loadThread]);
+
+  // Get sender name from email or current user
+  const getSenderName = (email: EmailItem) => {
+    if (email.senderId === currentUser?.id) return "You";
+    const firstRecipient = email.recipients[0];
+    return firstRecipient?.name || "Unknown";
+  };
 
   if (loading) {
     return (
@@ -77,21 +80,19 @@ export function ThreadView({ threadId, onBack }: ThreadViewProps) {
         ← Back to inbox
       </button>
 
-      {/* Running Summary */}
       <RunningSummary key={`${threadId}-${summaryVersion}`} threadId={threadId} />
 
-      {/* Thread Messages */}
       <div className="space-y-4">
         {messages.map((message) => (
           <ThreadMessage
             key={message.id}
             message={message}
-            isCurrentUser={Boolean(currentUserId) && message.senderId === currentUserId}
+            isCurrentUser={Boolean(currentUser) && message.senderId === currentUser.id}
+            senderName={getSenderName(message)}
           />
         ))}
       </div>
 
-      {/* Reply Composer */}
       <div className="border-t border-black/10 dark:border-white/10 pt-4">
         <h4 className="text-sm font-medium mb-3">Reply to thread</h4>
         <Composer threadId={threadId} onEmailSent={handleReplySent} />
