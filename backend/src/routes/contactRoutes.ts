@@ -17,9 +17,9 @@ router.use(requireAuth, requireTenant);
 
 router.get("/", listContacts);
 router.get("/search", searchContacts);
-router.get("/:id", getContactById);
 router.get("/:id/summary", getContactSummary);
 router.get("/:id/threads", getContactThreads);
+router.get("/:id", getContactById);
 router.post("/", createContact);
 router.put("/:id", updateContact);
 router.delete("/:id", deleteContact);
