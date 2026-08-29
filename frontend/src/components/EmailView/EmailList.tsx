@@ -1,3 +1,4 @@
+// src/components/EmailView/EmailList.tsx
 import { useEffect, useState, useCallback } from "react";
 import type { EmailItem } from "../../types";
 import { listEmails } from "../../services/apiClient";
@@ -8,7 +9,7 @@ interface EmailListProps {
 }
 
 type FilterType = "all" | "subject" | "recipient" | "status";
-type SortOption = "newest" | "oldest" | "subject-asc" | "subject-desc" | "status";
+type SortOption = "newest" | "oldest" | "subject-asc" | "subject-desc" | "status" | "recipient";
 
 export function EmailList({ onSelect }: EmailListProps) {
   const [emails, setEmails] = useState<EmailItem[]>([]);
@@ -98,6 +99,11 @@ export function EmailList({ onSelect }: EmailListProps) {
     return firstRecipient?.name || "Unknown";
   };
 
+  const getRecipientName = (email: EmailItem) => {
+    if (email.recipients.length === 0) return "No recipients";
+    return email.recipients[0]?.name || "Unknown";
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "sent":
@@ -170,8 +176,9 @@ export function EmailList({ onSelect }: EmailListProps) {
         >
           <option value="newest">Newest First</option>
           <option value="oldest">Oldest First</option>
-          <option value="subject-asc">A-Z</option>
-          <option value="subject-desc">Z-A</option>
+          <option value="subject-asc">A-Z (Subject)</option>
+          <option value="subject-desc">Z-A (Subject)</option>
+          <option value="recipient">A-Z (Recipient)</option>
           <option value="status">Status</option>
         </select>
 
