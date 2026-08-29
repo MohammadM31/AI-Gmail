@@ -12,29 +12,42 @@ export function RunningSummary({ threadId }: RunningSummaryProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // ✅ Exit early if threadId is null or undefined
-    if (!threadId) {
+    // ✅ If threadId is null or undefined, clear state and return
+    if (threadId === null || threadId === undefined) {
       setSummary([]);
       setLoading(false);
       return;
     }
 
+    let isMounted = true;
+
     async function loadSummary() {
       setLoading(true);
       setError(null);
       try {
-        // ✅ threadId is guaranteed to be a string here (not null)
-        const result = await getThreadSummary(threadId);
-        setSummary(result.summary);
+        // ✅ Use the non-null assertion operator (!) to tell TypeScript
+        // that threadId is definitely not null here
+        const result = await getThreadSummary(threadId!);
+        if (isMounted) {
+          setSummary(result.summary);
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load summary");
-        setSummary([]);
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : "Failed to load summary");
+          setSummary([]);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
 
     loadSummary();
+
+    return () => {
+      isMounted = false;
+    };
   }, [threadId]);
 
   if (!threadId) return null;
