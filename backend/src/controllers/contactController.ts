@@ -1,3 +1,4 @@
+// backend/src/controllers/contactController.ts
 import { Request, Response, NextFunction } from "express";
 import { supabase } from "../utils/supabaseClient";
 import { ApiError } from "../middleware/errorHandler";
@@ -101,7 +102,7 @@ export async function getContactById(req: Request, res: Response, next: NextFunc
   }
 }
 
-// ✅ NEW: Get thread summary between user and contact
+// ✅ FIXED: Get thread summary between user and contact
 export async function getContactSummary(req: Request, res: Response, next: NextFunction) {
   try {
     const { contactId } = req.params;
@@ -110,7 +111,7 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
     // Verify contact belongs to user
     const { data: contact, error: contactError } = await supabase
       .from("Contact")
-      .select("name")
+      .select("name, email")
       .eq("id", contactId)
       .eq("userId", userId)
       .single();
@@ -119,11 +120,7 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
       throw new ApiError(404, "Contact not found");
     }
 
-    // Fetch all emails between user and this contact
-    // We need to find emails where:
-    // - senderId is the user AND recipients contain the contact
-    // - OR senderId is the contact (if we had sender info, but we don't)
-    // For now, we'll find emails where the user is sender and contact is in recipients
+    // Fetch all emails where user is sender and contact is in recipients
     const { data: emails, error: emailsError } = await supabase
       .from("Email")
       .select("*")
@@ -137,7 +134,8 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
       return res.json({ 
         contact: contact.name,
         summary: ["No conversation history with this contact yet."],
-        emailCount: 0
+        emailCount: 0,
+        emails: []
       });
     }
 
@@ -164,7 +162,7 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
       id: e.id,
       subject: e.subject,
       content: e.content.substring(0, 150) + (e.content.length > 150 ? "..." : ""),
-      bulletPoints: e.bulletPoints,
+      bulletPoints: e.bulletPoints || [],
       createdAt: e.createdAt,
       status: e.status,
       threadId: e.threadId,
@@ -181,7 +179,7 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
   }
 }
 
-// ✅ NEW: Get all threads with a specific contact
+// ✅ FIXED: Get all threads with a specific contact
 export async function getContactThreads(req: Request, res: Response, next: NextFunction) {
   try {
     const { contactId } = req.params;
@@ -190,7 +188,7 @@ export async function getContactThreads(req: Request, res: Response, next: NextF
     // Verify contact belongs to user
     const { data: contact, error: contactError } = await supabase
       .from("Contact")
-      .select("name")
+      .select("name, email")
       .eq("id", contactId)
       .eq("userId", userId)
       .single();
@@ -231,7 +229,7 @@ export async function getContactThreads(req: Request, res: Response, next: NextF
         id: m.id,
         subject: m.subject,
         content: m.content.substring(0, 200) + (m.content.length > 200 ? "..." : ""),
-        bulletPoints: m.bulletPoints,
+        bulletPoints: m.bulletPoints || [],
         createdAt: m.createdAt,
         status: m.status,
       })),
