@@ -1,12 +1,10 @@
+// backend/src/controllers/templateController.ts
 import { Request, Response, NextFunction } from "express";
 import { supabase } from "../utils/supabaseClient";
 import { ApiError } from "../middleware/errorHandler";
 import { templateSchema } from "../utils/validators";
-import { createEmail, sendEmail } from "./emailController";
+import { createEmail as createEmailService } from "../services/emailProcessor";
 import { randomUUID } from "crypto";
-
-// Helper to get the actual emailController functions without circular dependency
-// We'll use supabase directly for sending scheduled templates
 
 export async function listTemplates(req: Request, res: Response, next: NextFunction) {
   try {

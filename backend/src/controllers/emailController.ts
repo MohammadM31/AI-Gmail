@@ -1,12 +1,16 @@
+// backend/src/controllers/emailController.ts
 import { Request, Response, NextFunction } from "express";
 import { supabase } from "../utils/supabaseClient";
 import { ApiError } from "../middleware/errorHandler";
 import { emailCreateSchema } from "../utils/validators";
-import { createEmail, decryptEmailContent } from "../services/emailProcessor";
+import { createEmail as createEmailService, decryptEmailContent } from "../services/emailProcessor";
 import { trackEvent } from "../services/analyticsService";
 import { logAudit } from "../services/auditService";
 import { processMessageWithAI } from "../services/geminiService";
 import { getIo } from "../realtime/socket";
+
+// ✅ Export createEmail so templateController can import it
+export { createEmailService as createEmail };
 
 export async function listEmails(req: Request, res: Response, next: NextFunction) {
   try {
@@ -146,7 +150,7 @@ export async function createEmailHandler(
       );
     }
 
-    const email = await createEmail({ senderId: req.auth!.userId, ...input });
+    const email = await createEmailService({ senderId: req.auth!.userId, ...input });
     if (input.chartData) await trackEvent(req.auth!.userId, "chart_generated");
     res.status(201).json(email);
   } catch (err) {

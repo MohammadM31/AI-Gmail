@@ -41,6 +41,9 @@ export const templateSchema = z.object({
   prompt: z.string().min(1),
   chartConfig: z.record(z.any()).nullable().optional(),
   isPublic: z.boolean().optional(),
+  recipientId: z.string().nullable().optional(),
+  scheduleDate: z.string().nullable().optional(),
+  autoSend: z.boolean().optional(),
 });
 
 export const registerSchema = z

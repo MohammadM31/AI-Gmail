@@ -1,3 +1,4 @@
+// backend/src/services/scheduledTemplateService.ts
 import { supabase } from "../utils/supabaseClient";
 import { logger } from "../utils/logger";
 
@@ -22,7 +23,8 @@ export async function checkAndSendScheduledTemplates() {
   isRunning = true;
   try {
     const now = new Date();
-    logger.info("🔍 Checking for scheduled templates due at:", now.toISOString());
+    // ✅ FIXED: Use template string instead of multiple arguments
+    logger.info(`🔍 Checking for scheduled templates due at: ${now.toISOString()}`);
 
     // Find templates that are due for sending
     const { data: templates, error } = await supabase
@@ -34,7 +36,8 @@ export async function checkAndSendScheduledTemplates() {
       .is("lastSentAt", null);
 
     if (error) {
-      logger.error("Failed to fetch scheduled templates:", error);
+      // ✅ FIXED: Use template string with error message
+      logger.error(`Failed to fetch scheduled templates: ${error.message}`);
       return;
     }
 
@@ -71,7 +74,8 @@ export async function checkAndSendScheduledTemplates() {
           });
 
         if (insertError) {
-          logger.error(`Failed to send scheduled template ${template.id}:`, insertError);
+          // ✅ FIXED: Use template string with error message
+          logger.error(`Failed to send scheduled template ${template.id}: ${insertError.message}`);
           results.push({ id: template.id, success: false, error: insertError.message });
           continue;
         }
@@ -89,8 +93,10 @@ export async function checkAndSendScheduledTemplates() {
         results.push({ id: template.id, success: true });
 
       } catch (err) {
-        logger.error(`Failed to process template ${template.id}:`, err);
-        results.push({ id: template.id, success: false, error: (err as Error).message });
+        // ✅ FIXED: Use template string with error message
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        logger.error(`Failed to process template ${template.id}: ${errorMsg}`);
+        results.push({ id: template.id, success: false, error: errorMsg });
       }
     }
 
@@ -98,7 +104,9 @@ export async function checkAndSendScheduledTemplates() {
     return results;
 
   } catch (err) {
-    logger.error("Scheduled template service error:", err);
+    // ✅ FIXED: Use template string with error message
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.error(`Scheduled template service error: ${errorMsg}`);
   } finally {
     isRunning = false;
   }
