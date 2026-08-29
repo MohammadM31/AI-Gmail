@@ -41,8 +41,10 @@ export function ThreadView({ threadId, onBack }: ThreadViewProps) {
     loadThread();
   }, [loadThread]);
 
+  // Get sender name from email or current user
   const getSenderName = (email: EmailItem) => {
-    if (email.senderId === currentUser?.id) return "You";
+    // ✅ Fixed: currentUser might be null, use explicit check
+    if (currentUser && email.senderId === currentUser.id) return "You";
     const firstRecipient = email.recipients[0];
     return firstRecipient?.name || "Unknown";
   };
@@ -87,7 +89,7 @@ export function ThreadView({ threadId, onBack }: ThreadViewProps) {
           <ThreadMessage
             key={message.id}
             message={message}
-            isCurrentUser={Boolean(currentUser) && message.senderId === currentUser.id}
+            isCurrentUser={!!currentUser && message.senderId === currentUser.id}
             senderName={getSenderName(message)}
           />
         ))}
