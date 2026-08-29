@@ -1,7 +1,7 @@
+// src/components/Contacts/ContactDetail.tsx
 import { useEffect, useState } from "react";
 import { getContact, getContactSummary, getContactThreads } from "../../services/apiClient";
 import type { Contact } from "../../types";
-import { useNavigate } from "react-router-dom";
 
 interface ContactDetailProps {
   contactId: string;
@@ -27,11 +27,9 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
     setLoading(true);
     setError(null);
     try {
-      // Load contact info
       const contactData = await getContact(contactId);
       setContact(contactData);
 
-      // Load summary and history in parallel
       const [summaryData, threadsData] = await Promise.all([
         getContactSummary(contactId),
         getContactThreads(contactId),
@@ -103,7 +101,6 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
         ← Back to contacts
       </button>
 
-      {/* Contact Info Card */}
       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-full bg-accent-light/20 dark:bg-accent-dark/40 flex items-center justify-center text-2xl font-semibold">
@@ -120,7 +117,6 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
         </div>
       </div>
 
-      {/* Tab Navigation */}
       <div className="flex border-b border-black/10 dark:border-white/10">
         <button
           onClick={() => setActiveTab("summary")}
@@ -144,7 +140,6 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
         </button>
       </div>
 
-      {/* Summary Tab */}
       {activeTab === "summary" && (
         <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4">
           <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
@@ -168,7 +163,6 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
         </div>
       )}
 
-      {/* History Tab */}
       {activeTab === "history" && (
         <div className="space-y-3">
           {emails.length === 0 ? (

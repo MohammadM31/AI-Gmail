@@ -1,3 +1,4 @@
+// src/components/EmailView/ThreadView.tsx
 import { useCallback, useEffect, useState } from "react";
 import { EmailItem } from "../../types";
 import { getThread } from "../../services/apiClient";
@@ -40,7 +41,6 @@ export function ThreadView({ threadId, onBack }: ThreadViewProps) {
     loadThread();
   }, [loadThread]);
 
-  // Get sender name from email or current user
   const getSenderName = (email: EmailItem) => {
     if (email.senderId === currentUser?.id) return "You";
     const firstRecipient = email.recipients[0];

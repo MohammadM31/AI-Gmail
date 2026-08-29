@@ -1,5 +1,6 @@
+// src/components/EmailComposer/RunningSummary.tsx
 import { useEffect, useState } from "react";
-import { summarizeThread } from "../../services/apiClient";
+import { getThreadSummary } from "../../services/apiClient";
 
 interface RunningSummaryProps {
   threadId: string | null;
@@ -11,7 +12,6 @@ export function RunningSummary({ threadId }: RunningSummaryProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // ✅ Exit early if threadId is null or undefined
     if (!threadId) {
       setSummary([]);
       setLoading(false);
@@ -22,8 +22,7 @@ export function RunningSummary({ threadId }: RunningSummaryProps) {
       setLoading(true);
       setError(null);
       try {
-        // ✅ threadId is guaranteed to be a string here
-        const result = await summarizeThread(threadId as string);
+        const result = await getThreadSummary(threadId);
         setSummary(result.summary);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load summary");
