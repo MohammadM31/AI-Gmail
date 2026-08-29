@@ -1,3 +1,4 @@
+// backend/src/app.ts
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -24,13 +25,18 @@ app.use(
   })
 );
 
-// ✅ FIXED CORS: Allow localhost and Vercel
+// ✅ FIXED CORS: Allow all Vercel origins and localhost
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
   "http://localhost:5000",
+  "https://ai-gmail-lhnzwenxs-mohammadmoghnieh5-7328s-projects.vercel.app",
   "https://ai-gmail-three.vercel.app",
-  "https://ai-gmail-three.vercel.app/",
+  "https://ai-gmail.vercel.app",
+  // ✅ Allow any vercel.app subdomain
+  /\.vercel\.app$/,
+  // ✅ Allow the Render backend itself
+  "https://ai-gmail-lw6d.onrender.com",
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
@@ -46,9 +52,12 @@ app.use(
       }
       
       // Check if the origin is allowed
-      const allowed = allowedOrigins.some(
-        (allowedOrigin) => allowedOrigin === origin || allowedOrigin === origin + "/"
-      );
+      const allowed = allowedOrigins.some((allowedOrigin) => {
+        if (allowedOrigin instanceof RegExp) {
+          return allowedOrigin.test(origin);
+        }
+        return allowedOrigin === origin || allowedOrigin === origin + "/";
+      });
       
       if (allowed) {
         console.log("✅ CORS allowed:", origin);
@@ -60,8 +69,10 @@ app.use(
       }
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Accept"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept", "X-Requested-With"],
+    exposedHeaders: ["Content-Length", "X-Request-Id"],
+    maxAge: 86400, // 24 hours
   })
 );
 
