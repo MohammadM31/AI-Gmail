@@ -108,6 +108,8 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
     const { contactId } = req.params;
     const userId = req.auth!.userId;
 
+    console.log(`🔍 Getting summary for contact: ${contactId}, user: ${userId}`);
+
     // Verify contact belongs to user
     const { data: contact, error: contactError } = await supabase
       .from("Contact")
@@ -117,20 +119,35 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
       .single();
     
     if (contactError || !contact) {
+      console.log(`❌ Contact not found: ${contactId}`, contactError);
       throw new ApiError(404, "Contact not found");
     }
 
-    // Fetch all emails where user is sender and contact is in recipients
+    console.log(`✅ Contact found: ${contact.name}`);
+
+    // ✅ FIX: Fetch all emails and filter in JavaScript (JSONB contains doesn't work well)
     const { data: emails, error: emailsError } = await supabase
       .from("Email")
       .select("*")
       .eq("senderId", userId)
-      .contains("recipients", [{ name: contact.name }])
       .order("createdAt", { ascending: true });
 
-    if (emailsError) throw new ApiError(500, emailsError.message);
+    if (emailsError) {
+      console.log(`❌ Email query error:`, emailsError);
+      throw new ApiError(500, emailsError.message);
+    }
 
-    if (!emails || emails.length === 0) {
+    // ✅ Filter emails that contain the contact
+    const contactEmails = (emails || []).filter((email) => {
+      const recipients = email.recipients || [];
+      return recipients.some((r: any) => 
+        r.name?.toLowerCase() === contact.name.toLowerCase()
+      );
+    });
+
+    console.log(`📧 Found ${contactEmails.length} emails with ${contact.name}`);
+
+    if (!contactEmails || contactEmails.length === 0) {
       return res.json({ 
         contact: contact.name,
         summary: ["No conversation history with this contact yet."],
@@ -140,9 +157,9 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
     }
 
     // Decrypt email content
-    const decryptedEmails = emails.map((e) => decryptEmailContent(e));
+    const decryptedEmails = contactEmails.map((e) => decryptEmailContent(e));
 
-    // Build conversation text for summarization
+    // Build conversation text
     const conversationText = decryptedEmails
       .map((e) => `Subject: ${e.subject}\nContent: ${e.content}\n---`)
       .join("\n");
@@ -157,7 +174,6 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
       []
     );
 
-    // Also extract email previews for conversation history
     const emailPreviews = decryptedEmails.map((e) => ({
       id: e.id,
       subject: e.subject,
@@ -175,6 +191,7 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
       emails: emailPreviews,
     });
   } catch (err) {
+    console.error(`❌ Error in getContactSummary:`, err);
     next(err);
   }
 }
@@ -185,6 +202,8 @@ export async function getContactThreads(req: Request, res: Response, next: NextF
     const { contactId } = req.params;
     const userId = req.auth!.userId;
 
+    console.log(`🔍 Getting threads for contact: ${contactId}, user: ${userId}`);
+
     // Verify contact belongs to user
     const { data: contact, error: contactError } = await supabase
       .from("Contact")
@@ -194,21 +213,36 @@ export async function getContactThreads(req: Request, res: Response, next: NextF
       .single();
     
     if (contactError || !contact) {
+      console.log(`❌ Contact not found: ${contactId}`);
       throw new ApiError(404, "Contact not found");
     }
 
-    // Fetch all emails where user is sender and contact is in recipients
+    console.log(`✅ Contact found: ${contact.name}`);
+
+    // ✅ FIX: Fetch all emails and filter in JavaScript
     const { data: sentEmails, error: sentError } = await supabase
       .from("Email")
       .select("*")
       .eq("senderId", userId)
-      .contains("recipients", [{ name: contact.name }])
       .order("createdAt", { ascending: false });
 
-    if (sentError) throw new ApiError(500, sentError.message);
+    if (sentError) {
+      console.log(`❌ Email query error:`, sentError);
+      throw new ApiError(500, sentError.message);
+    }
+
+    // ✅ Filter emails that contain the contact
+    const contactEmails = (sentEmails || []).filter((email) => {
+      const recipients = email.recipients || [];
+      return recipients.some((r: any) => 
+        r.name?.toLowerCase() === contact.name.toLowerCase()
+      );
+    });
+
+    console.log(`📧 Found ${contactEmails.length} emails with ${contact.name}`);
 
     // Decrypt and format
-    const decrypted = (sentEmails ?? []).map((e) => decryptEmailContent(e));
+    const decrypted = contactEmails.map((e) => decryptEmailContent(e));
 
     // Group by threadId
     const threads: Record<string, any[]> = {};
@@ -235,12 +269,15 @@ export async function getContactThreads(req: Request, res: Response, next: NextF
       })),
     }));
 
+    console.log(`✅ Returning ${formattedThreads.length} threads`);
+
     res.json({
       contact: contact.name,
       threads: formattedThreads,
       totalEmails: decrypted.length,
     });
   } catch (err) {
+    console.error(`❌ Error in getContactThreads:`, err);
     next(err);
   }
 }

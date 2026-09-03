@@ -1,3 +1,4 @@
+// frontend/src/components/EmailComposer/Composer.tsx
 import { useRef, useState, useEffect } from "react";
 import { VoiceInput } from "./VoiceInput";
 import { SplitView } from "./SplitView";
@@ -25,7 +26,6 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ✅ Check if there are valid recipients
   const hasValidRecipients = recipients.length > 0;
 
   async function handleGenerate() {
@@ -37,7 +37,6 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
     try {
       const res = await processMessage(text);
       setResult(res);
-      // ✅ Only set recipients if AI found valid ones
       if (res.recipients && res.recipients.length > 0) {
         setRecipients(res.recipients);
       } else if (res._warning) {
@@ -70,11 +69,21 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
 
   async function handleSaveDraft() {
     if (!result) return;
-    // ✅ Validate recipients before saving draft
+    
+    // ✅ Validate
+    if (!result.subject?.trim()) {
+      setError("Subject is required to save");
+      return;
+    }
+    if (!text.trim()) {
+      setError("Email content is required");
+      return;
+    }
     if (!hasValidRecipients) {
       setError("Please add at least one valid recipient before saving.");
       return;
     }
+    
     try {
       const email = await createEmail({
         recipients,
@@ -94,11 +103,21 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
 
   async function handleSend() {
     if (!result) return;
-    // ✅ Validate recipients before sending
+    
+    // ✅ Validate
+    if (!result.subject?.trim()) {
+      setError("Subject is required");
+      return;
+    }
+    if (!text.trim()) {
+      setError("Email content is required");
+      return;
+    }
     if (!hasValidRecipients) {
       setError("Please add at least one valid recipient before sending.");
       return;
     }
+    
     setSending(true);
     setError(null);
     try {

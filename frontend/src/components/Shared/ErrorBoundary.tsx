@@ -1,3 +1,4 @@
+// frontend/src/components/Shared/ErrorBoundary.tsx
 import { Component, ErrorInfo, ReactNode } from "react";
 
 interface Props {
@@ -18,6 +19,12 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error("Unhandled UI error:", error, info);
   }
 
+  handleReset = () => {
+    this.setState({ error: null });
+    // Optionally reload the page or reset specific state
+    window.location.reload();
+  };
+
   render() {
     if (this.state.error) {
       return (
@@ -26,10 +33,10 @@ export class ErrorBoundary extends Component<Props, State> {
             <h1 className="text-lg font-semibold">Something went wrong</h1>
             <p className="text-sm opacity-70">{this.state.error.message}</p>
             <button
-              onClick={() => this.setState({ error: null })}
+              onClick={this.handleReset}
               className="rounded-full bg-highlight px-4 py-1.5 text-sm font-medium text-white hover:opacity-90"
             >
-              Try again
+              Reload page
             </button>
           </div>
         </div>

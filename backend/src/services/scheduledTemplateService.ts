@@ -1,16 +1,7 @@
 // backend/src/services/scheduledTemplateService.ts
+import crypto from "crypto"; // ✅ ADDED
 import { supabase } from "../utils/supabaseClient";
 import { logger } from "../utils/logger";
-
-/**
- * Background service that checks for scheduled templates and sends them.
- * Should be called periodically via cron job or setInterval.
- * 
- * Usage:
- * - In server.ts: 
- *   import { startScheduledTemplateService } from "./services/scheduledTemplateService";
- *   startScheduledTemplateService(60 * 60 * 1000); // Check every hour
- */
 
 let isRunning = false;
 
@@ -23,10 +14,8 @@ export async function checkAndSendScheduledTemplates() {
   isRunning = true;
   try {
     const now = new Date();
-    // ✅ FIXED: Use template string instead of multiple arguments
     logger.info(`🔍 Checking for scheduled templates due at: ${now.toISOString()}`);
 
-    // Find templates that are due for sending
     const { data: templates, error } = await supabase
       .from("Template")
       .select("*, Contact!recipientId(name, email)")
@@ -36,7 +25,6 @@ export async function checkAndSendScheduledTemplates() {
       .is("lastSentAt", null);
 
     if (error) {
-      // ✅ FIXED: Use template string with error message
       logger.error(`Failed to fetch scheduled templates: ${error.message}`);
       return;
     }
@@ -54,7 +42,6 @@ export async function checkAndSendScheduledTemplates() {
         const contactName = template.Contact?.name || "Recipient";
         const resolvedPrompt = template.prompt.replace(/{contact}/g, contactName);
 
-        // Create and send email
         const { error: insertError } = await supabase
           .from("Email")
           .insert({
@@ -69,18 +56,16 @@ export async function checkAndSendScheduledTemplates() {
             chartData: null,
             attachments: [],
             status: "sent",
-            threadId: crypto.randomUUID(),
+            threadId: crypto.randomUUID(), // ✅ Now works with import
             sentAt: now.toISOString(),
           });
 
         if (insertError) {
-          // ✅ FIXED: Use template string with error message
           logger.error(`Failed to send scheduled template ${template.id}: ${insertError.message}`);
           results.push({ id: template.id, success: false, error: insertError.message });
           continue;
         }
 
-        // Mark template as sent
         await supabase
           .from("Template")
           .update({ 
@@ -93,7 +78,6 @@ export async function checkAndSendScheduledTemplates() {
         results.push({ id: template.id, success: true });
 
       } catch (err) {
-        // ✅ FIXED: Use template string with error message
         const errorMsg = err instanceof Error ? err.message : String(err);
         logger.error(`Failed to process template ${template.id}: ${errorMsg}`);
         results.push({ id: template.id, success: false, error: errorMsg });
@@ -104,7 +88,6 @@ export async function checkAndSendScheduledTemplates() {
     return results;
 
   } catch (err) {
-    // ✅ FIXED: Use template string with error message
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.error(`Scheduled template service error: ${errorMsg}`);
   } finally {
@@ -112,26 +95,13 @@ export async function checkAndSendScheduledTemplates() {
   }
 }
 
-/**
- * Start the scheduled template service with a given interval (in milliseconds).
- * Default: every hour (60 * 60 * 1000)
- */
 export function startScheduledTemplateService(interval: number = 60 * 60 * 1000) {
   logger.info(`⏰ Starting scheduled template service (interval: ${interval}ms)`);
-  
-  // Run immediately on start
   checkAndSendScheduledTemplates();
-  
-  // Then run on interval
   const timer = setInterval(checkAndSendScheduledTemplates, interval);
-  
-  // Return the timer so it can be cleared if needed
   return timer;
 }
 
-/**
- * Stop the scheduled template service
- */
 export function stopScheduledTemplateService(timer: NodeJS.Timeout) {
   clearInterval(timer);
   logger.info("⏹️ Scheduled template service stopped");

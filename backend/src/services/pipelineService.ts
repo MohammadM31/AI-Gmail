@@ -1,4 +1,5 @@
 // backend/src/services/pipelineService.ts
+import crypto from "crypto"; // ✅ ADDED
 import { supabase } from "../utils/supabaseClient";
 import { processMessageWithAI } from "./geminiService";
 import { logger } from "../utils/logger";
@@ -54,7 +55,7 @@ export async function generatePipelineFromThread(
       .map((e) => `From: ${e.senderId === userId ? 'You' : contact.name}\nSubject: ${e.subject}\nContent: ${e.content}`)
       .join("\n---\n");
 
-    // ✅ IMPROVED: AI extracts context-specific pipeline
+    // AI extracts context-specific pipeline
     const result = await processMessageWithAI(
       `You are an AI that analyzes email conversations and extracts the workflow or process being discussed.
 
@@ -118,7 +119,7 @@ export async function generatePipelineFromThread(
 
     // Assign order and IDs to stages
     const stages = pipelineData.stages.map((stage: any, index: number) => ({
-      id: crypto.randomUUID(),
+      id: crypto.randomUUID(), // ✅ Now works with import
       name: stage.name || `Step ${index + 1}`,
       description: stage.description || '',
       status: stage.status || 'pending',

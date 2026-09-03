@@ -1,24 +1,7 @@
-// src/components/Pipeline/PipelineView.tsx
+// frontend/src/components/Pipeline/PipelineView.tsx
 import { useEffect, useState } from "react";
 import { getPipeline, generatePipeline, updatePipeline } from "../../services/apiClient";
-
-interface PipelineStage {
-  id: string;
-  name: string;
-  description: string;
-  status: 'pending' | 'in-progress' | 'complete';
-  order: number;
-}
-
-interface Pipeline {
-  id: string;
-  contactId: string;
-  contactName: string;
-  projectName: string;
-  projectType: 'sales' | 'development' | 'event' | 'job' | 'general';
-  stages: PipelineStage[];
-  updatedAt: string;
-}
+import type { Pipeline, PipelineStage } from "../../types";
 
 interface PipelineViewProps {
   contactId: string;

@@ -1,3 +1,4 @@
+// frontend/src/components/Templates/TemplateManager.tsx
 import { useEffect, useState, FormEvent } from "react";
 import type { Template, Contact } from "../../types";
 import { listTemplates, createTemplate, deleteTemplate, listContacts, sendTemplateNow } from "../../services/apiClient";
@@ -40,6 +41,16 @@ export function TemplateManager({ onUse }: { onUse: (prompt: string) => void }) 
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
     if (!name.trim() || !prompt.trim()) return;
+    
+    // ✅ Validate schedule date
+    if (scheduleDate) {
+      const selectedDate = new Date(scheduleDate);
+      if (selectedDate < new Date()) {
+        alert("Schedule date must be in the future");
+        return;
+      }
+    }
+    
     setLoading(true);
     try {
       const template = await createTemplate({
@@ -132,6 +143,7 @@ export function TemplateManager({ onUse }: { onUse: (prompt: string) => void }) 
             className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none"
             value={scheduleDate}
             onChange={(e) => setScheduleDate(e.target.value)}
+            min={new Date().toISOString().slice(0, 16)} // ✅ Prevent past dates
           />
         </div>
 

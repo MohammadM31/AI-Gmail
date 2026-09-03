@@ -1,7 +1,8 @@
+// frontend/src/App.tsx
 import { useState } from "react";
 import { useUserStore } from "./stores/userStore";
 import { AuthScreen } from "./components/Auth/AuthScreen";
-import { Sidebar } from "./components/Sidebar/Sidebar"; // ✅ FIXED PATH
+import { Sidebar } from "./components/Sidebar/Sidebar";
 import { ThemeToggle } from "./components/Shared/ThemeToggle";
 import { Composer } from "./components/EmailComposer/Composer";
 import { ThreadView } from "./components/EmailView/ThreadView";
@@ -32,7 +33,8 @@ function App() {
 
   function handleEmailSelect(email: EmailItem) {
     setSelectedEmail(email);
-    setSelectedThreadId(email.threadId);
+    // ✅ Fix: Use threadId or fallback to email.id
+    setSelectedThreadId(email.threadId || email.id);
     setActiveView("inbox");
   }
 
@@ -43,6 +45,7 @@ function App() {
   }
 
   function renderContent() {
+    // ✅ Show ThreadView when a thread is selected
     if (selectedThreadId) {
       return (
         <ThreadView
@@ -52,6 +55,7 @@ function App() {
       );
     }
 
+    // ✅ Show EmailDetail when an email is selected but no thread
     if (selectedEmail) {
       return (
         <div className="space-y-4">

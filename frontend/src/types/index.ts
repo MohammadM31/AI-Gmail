@@ -1,5 +1,7 @@
+// frontend/src/types/index.ts
+
 export interface ChartData {
-  type: string; // ✅ Now supports any chart.js type
+  type: string;
   title: string;
   labels: string[];
   values: number[];
@@ -12,7 +14,7 @@ export interface AiProcessResult {
   chart: ChartData | null;
   tone: "professional" | "casual" | "urgent";
   emailId?: string;
-  _warning?: string; // ✅ Added for no-recipient warnings
+  _warning?: string;
 }
 
 export interface User {
@@ -70,7 +72,6 @@ export interface Template {
   autoSend?: boolean;
   isScheduled?: boolean;
   lastSentAt?: string | null;
-  // For display purposes
   recipientName?: string;
 }
 
@@ -81,3 +82,22 @@ export type NavView =
   | "templates"
   | "analytics"
   | "settings";
+
+// ✅ NEW: Pipeline Types
+export interface PipelineStage {
+  id: string;
+  name: string;
+  description: string;
+  status: 'pending' | 'in-progress' | 'complete';
+  order: number;
+}
+
+export interface Pipeline {
+  id: string;
+  contactId: string;
+  contactName: string;
+  projectName: string;
+  projectType: 'sales' | 'development' | 'event' | 'job' | 'general';
+  stages: PipelineStage[];
+  updatedAt: string;
+}

@@ -1,3 +1,4 @@
+// frontend/src/services/apiClient.ts
 import type {
   AiProcessResult,
   Attachment,
@@ -6,12 +7,24 @@ import type {
   Template,
   User,
   UserSettingsData,
+  Pipeline,
 } from "../types";
 import { useUserStore } from "../stores/userStore";
 
-// ✅ Force to use the real backend, NOT mock
-export const API_URL = "https://ai-gmail-lw6d.onrender.com";
-export const USE_MOCK = false; // ← Force real API calls
+// ✅ Use environment variable with fallback
+export const API_URL = import.meta.env.VITE_API_URL || "https://ai-gmail-lw6d.onrender.com";
+export const USE_MOCK = false;
+
+// ✅ Environment check
+if (!API_URL) {
+  console.error('🚨 VITE_API_URL is not set!');
+}
+
+interface RateLimitInfo {
+  limit: number;
+  remaining: number;
+  reset: number;
+}
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = useUserStore.getState().token;
@@ -24,20 +37,32 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   });
 
+  // ✅ Check rate limit headers
+  const rateLimitInfo: RateLimitInfo | null = res.headers.get('RateLimit-Limit') ? {
+    limit: Number(res.headers.get('RateLimit-Limit')),
+    remaining: Number(res.headers.get('RateLimit-Remaining')),
+    reset: Number(res.headers.get('RateLimit-Reset')),
+  } : null;
+
   if (!res.ok) {
     const body = await res.json().catch(() => null);
+    
+    // ✅ Handle rate limit specifically
+    if (res.status === 429) {
+      const resetTime = rateLimitInfo?.reset || Math.floor(Date.now() / 1000) + 60;
+      const resetDate = new Date(resetTime * 1000);
+      throw new Error(`Rate limit exceeded. Try again at ${resetDate.toLocaleTimeString()}`);
+    }
+    
     throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
   }
+  
   if (res.status === 204) return undefined as T;
   return res.json();
 }
 
 // ---- AI ----
 export async function processMessage(message: string): Promise<AiProcessResult> {
-  // Use the authenticated endpoint, not /api/ai/test — the test route
-  // exists only for pre-auth smoke-testing and skips recipient
-  // resolution, audit logging, and usage tracking entirely, since it
-  // has no req.auth to resolve contacts or attribute events against.
   return request<AiProcessResult>("/api/ai/process", {
     method: "POST",
     body: JSON.stringify({ message }),
@@ -92,23 +117,30 @@ export async function updateSettings(input: Partial<UserSettingsData>) {
 
 // ---- Attachments ----
 export async function uploadAttachment(file: File): Promise<Attachment> {
-  const { path, signedUrl } = await request<{
-    path: string;
-    signedUrl: string;
-    token: string;
-  }>("/api/emails/attachments/upload-url", {
-    method: "POST",
-    body: JSON.stringify({ fileName: file.name }),
-  });
+  try {
+    const { path, signedUrl } = await request<{
+      path: string;
+      signedUrl: string;
+      token: string;
+    }>("/api/emails/attachments/upload-url", {
+      method: "POST",
+      body: JSON.stringify({ fileName: file.name }),
+    });
 
-  const uploadRes = await fetch(signedUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || "application/octet-stream" },
-    body: file,
-  });
-  if (!uploadRes.ok) throw new Error(`Attachment upload failed (${uploadRes.status})`);
+    const uploadRes = await fetch(signedUrl, {
+      method: "PUT",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    if (!uploadRes.ok) {
+      throw new Error(`Upload failed (${uploadRes.status})`);
+    }
 
-  return { name: file.name, path, size: file.size, type: file.type };
+    return { name: file.name, path, size: file.size, type: file.type };
+  } catch (error) {
+    console.error("Upload failed:", error);
+    throw new Error(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 export async function getAttachmentUrl(path: string) {
@@ -245,14 +277,12 @@ export async function deleteTemplate(id: string) {
   return request<void>(`/api/templates/${id}`, { method: "DELETE" });
 }
 
-// ✅ NEW: Send scheduled templates
 export async function sendScheduledTemplates() {
   return request<{ processed: number; results: any[] }>("/api/templates/send-scheduled", {
     method: "POST",
   });
 }
 
-// ✅ NEW: Send template now
 export async function sendTemplateNow(id: string) {
   return request<{ success: boolean; emailId: string }>(`/api/templates/${id}/send`, {
     method: "POST",
@@ -335,3 +365,28 @@ export async function exportAnalytics(params?: { startDate?: string; endDate?: s
   URL.revokeObjectURL(url);
 }
 
+// ---- Pipeline ----
+export async function getPipeline(contactId: string) {
+  return request<{
+    exists: boolean;
+    pipeline: Pipeline | null;
+  }>(`/api/pipeline/${contactId}`);
+}
+
+export async function generatePipeline(contactId: string, threadId: string) {
+  return request<{
+    pipeline: Pipeline;
+  }>(`/api/pipeline/${contactId}/generate`, {
+    method: 'POST',
+    body: JSON.stringify({ threadId }),
+  });
+}
+
+export async function updatePipeline(contactId: string, threadId: string) {
+  return request<{
+    pipeline: Pipeline;
+  }>(`/api/pipeline/${contactId}/update`, {
+    method: 'POST',
+    body: JSON.stringify({ threadId }),
+  });
+}

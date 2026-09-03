@@ -1,3 +1,4 @@
+// frontend/src/components/Dashboard/Analytics.tsx
 import { useEffect, useState } from "react";
 import { UsageStats } from "./UsageStats";
 import { getTopics, getTopicTrends, listContacts, exportAnalytics } from "../../services/apiClient";
@@ -9,8 +10,8 @@ export function Analytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [exporting, setExporting] = useState(false);
 
-  // Filter states
   const [selectedContactId, setSelectedContactId] = useState("");
   const [dateRange, setDateRange] = useState<"7days" | "30days" | "90days" | "custom">("30days");
   const [startDate, setStartDate] = useState("");
@@ -35,7 +36,6 @@ export function Analytics() {
     setLoading(true);
     setError(null);
     try {
-      // Calculate date range
       let start: string | undefined;
       let end: string | undefined;
 
@@ -69,6 +69,8 @@ export function Analytics() {
   }
 
   async function handleExport() {
+    if (exporting) return;
+    setExporting(true);
     try {
       let start: string | undefined;
       let end: string | undefined;
@@ -88,12 +90,13 @@ export function Analytics() {
       await exportAnalytics({ startDate: start, endDate: end });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to export analytics");
+    } finally {
+      setExporting(false);
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Filters */}
       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4">
         <h3 className="text-sm font-medium mb-3">Filters</h3>
         <div className="flex flex-wrap gap-3 items-end">
@@ -172,20 +175,19 @@ export function Analytics() {
 
           <button
             onClick={handleExport}
-            className="rounded-full border border-black/10 dark:border-white/10 px-4 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5"
+            disabled={exporting}
+            className="rounded-full border border-black/10 dark:border-white/10 px-4 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-50"
           >
-            📥 Export CSV
+            {exporting ? "Exporting..." : "📥 Export CSV"}
           </button>
         </div>
       </div>
 
-      {/* Usage Stats */}
       <UsageStats
         dateFrom={dateRange !== "custom" ? undefined : startDate}
         dateTo={dateRange !== "custom" ? undefined : endDate}
       />
 
-      {/* Frequent Topics */}
       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium">Frequent topics</h3>

@@ -1,6 +1,7 @@
-// src/components/Contacts/ContactDetail.tsx
+// frontend/src/components/Contacts/ContactDetail.tsx
 import { useEffect, useState } from "react";
 import { getContact, getContactSummary, getContactThreads } from "../../services/apiClient";
+import { PipelineView } from "../Pipeline/PipelineView";
 import type { Contact } from "../../types";
 
 interface ContactDetailProps {
@@ -15,9 +16,8 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
   const [emails, setEmails] = useState<any[]>([]);
   const [threads, setThreads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingSummary, setLoadingSummary] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"summary" | "history">("summary");
+  const [activeTab, setActiveTab] = useState<"summary" | "history" | "pipeline">("summary");
 
   useEffect(() => {
     loadContact();
@@ -30,14 +30,24 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
       const contactData = await getContact(contactId);
       setContact(contactData);
 
-      const [summaryData, threadsData] = await Promise.all([
-        getContactSummary(contactId),
-        getContactThreads(contactId),
-      ]);
+      // Try to load summary and threads, but don't fail if they 404
+      try {
+        const summaryData = await getContactSummary(contactId);
+        setSummary(summaryData.summary);
+        setEmails(summaryData.emails || []);
+      } catch (summaryErr) {
+        console.warn('Summary not available:', summaryErr);
+        setSummary(['No summary available for this contact.']);
+        setEmails([]);
+      }
 
-      setSummary(summaryData.summary);
-      setEmails(summaryData.emails || []);
-      setThreads(threadsData.threads || []);
+      try {
+        const threadsData = await getContactThreads(contactId);
+        setThreads(threadsData.threads || []);
+      } catch (threadsErr) {
+        console.warn('Threads not available:', threadsErr);
+        setThreads([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load contact details");
     } finally {
@@ -67,6 +77,9 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
         return "bg-gray-100 text-gray-800 dark:bg-gray-800/30 dark:text-gray-400";
     }
   }
+
+  // Get the first thread ID for Pipeline
+  const firstThreadId = threads.length > 0 ? threads[0]?.threadId : null;
 
   if (loading) {
     return (
@@ -138,6 +151,16 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
         >
           💬 Conversation History ({emails.length})
         </button>
+        <button
+          onClick={() => setActiveTab("pipeline")}
+          className={`px-4 py-2 text-sm font-medium transition ${
+            activeTab === "pipeline"
+              ? "border-b-2 border-highlight text-highlight"
+              : "opacity-60 hover:opacity-100"
+          }`}
+        >
+          📊 Pipeline
+        </button>
       </div>
 
       {activeTab === "summary" && (
@@ -198,6 +221,15 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
             ))
           )}
         </div>
+      )}
+
+      {activeTab === "pipeline" && (
+        <PipelineView
+          contactId={contactId}
+          contactName={contact.name}
+          threadId={firstThreadId}
+          onClose={() => {}}
+        />
       )}
     </div>
   );

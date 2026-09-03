@@ -1,3 +1,4 @@
+// backend/src/controllers/aiController.ts
 import { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { processMessageWithAI } from "../services/geminiService";
@@ -5,48 +6,65 @@ import { resolveRecipients } from "../services/recipientResolver";
 import { supabase } from "../utils/supabaseClient";
 import { trackEvent } from "../services/analyticsService";
 import { logAudit } from "../services/auditService";
-import { ApiError } from "../middleware/errorHandler";
+import { 
+  ApiError, 
+  ValidationError, 
+  ServiceUnavailableError,
+  RateLimitError 
+} from "../middleware/errorHandler";
+import { aiRateLimiter } from "../middleware/rateLimiter";
 
-const processSchema = z.object({ message: z.string().min(1, "message is required") });
+const processSchema = z.object({ 
+  message: z.string()
+    .min(1, "Message is required")
+    .max(10000, "Message exceeds maximum length of 10000 characters")
+});
 
 export async function processMessage(req: Request, res: Response, next: NextFunction) {
   try {
-    console.log("🔍 AI Request received:", req.body);
+    // Validate input
     const { message } = processSchema.parse(req.body);
-    console.log("📝 Message to process:", message);
+    logger.debug({ userId: req.auth!.userId, messageLength: message.length }, "AI request received");
 
-    // ✅ Fetch user's contacts first
+    // Check if AI service is available
+    if (!process.env.GEMINI_API_KEY) {
+      throw new ServiceUnavailableError("Gemini AI");
+    }
+
+    // Fetch user's contacts
     const { data: contacts, error: contactsError } = await supabase
       .from("Contact")
       .select("name")
       .eq("userId", req.auth!.userId);
 
     if (contactsError) {
-      console.error("❌ Failed to fetch contacts:", contactsError);
-      // Continue without contacts (just won't validate recipients)
+      logger.warn({ error: contactsError }, "Failed to fetch contacts, continuing without validation");
     }
 
     const contactNames = (contacts ?? []).map((c) => c.name);
-    console.log("👤 User contacts:", contactNames);
+    logger.debug({ contactCount: contactNames.length }, "User contacts fetched");
 
-    console.log("🤖 Calling Gemini API with contact validation...");
-    const result = await processMessageWithAI(message, contactNames);
-    console.log("✅ Gemini response received:", result);
-
-    // ✅ If no valid recipients, return early with empty recipients
-    if (result.recipients.length === 0) {
-      console.log("⚠️ No valid recipients found in contacts");
-      return res.json({
-        ...result,
-        recipients: [],
-        _warning: "No valid recipients found. Please add a contact or try again."
-      });
+    // Process with AI
+    let result;
+    try {
+      result = await processMessageWithAI(message, contactNames);
+    } catch (aiError) {
+      logger.error({ error: aiError, userId: req.auth!.userId }, "Gemini AI processing failed");
+      throw new ServiceUnavailableError("Gemini AI");
     }
 
-    const recipients = await resolveRecipients(req.auth!.userId, result.recipients);
-    console.log("👤 Resolved recipients:", recipients);
+    // Log successful processing
+    logger.info({ 
+      userId: req.auth!.userId,
+      recipientCount: result.recipients.length,
+      hasChart: !!result.chart,
+      tone: result.tone
+    }, "AI processing successful");
 
+    // Track analytics
     await trackEvent(req.auth!.userId, "ai_call");
+
+    // Log audit
     await logAudit({
       userId: req.auth!.userId,
       action: "ai_process",
@@ -55,14 +73,22 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
       req,
     });
 
+    // If no valid recipients, return early with warning
+    if (result.recipients.length === 0) {
+      return res.json({
+        ...result,
+        recipients: [],
+        _warning: "No valid recipients found. Please add a contact or try again."
+      });
+    }
+
+    // Resolve recipients (this validates they exist in user's contacts)
+    const recipients = await resolveRecipients(req.auth!.userId, result.recipients);
+    logger.debug({ resolvedCount: recipients.length }, "Recipients resolved");
+
     res.json({ ...result, recipients });
   } catch (err) {
-    console.error("❌❌❌ AI PROCESSING ERROR ❌❌❌");
-    console.error("Error:", err);
-    if (err instanceof Error) {
-      console.error("Message:", err.message);
-      console.error("Stack:", err.stack);
-    }
+    // Let the error handler middleware handle it
     next(err);
   }
 }
@@ -83,6 +109,10 @@ export async function generateChart(req: Request, res: Response, next: NextFunct
 export async function suggestRecipients(req: Request, res: Response, next: NextFunction) {
   try {
     const q = String(req.query.q ?? req.body?.q ?? "");
+    if (q.length < 1) {
+      return res.json([]);
+    }
+
     const { data, error } = await supabase
       .from("Contact")
       .select("*")
@@ -90,7 +120,10 @@ export async function suggestRecipients(req: Request, res: Response, next: NextF
       .ilike("name", `%${q}%`)
       .order("usageCount", { ascending: false })
       .limit(5);
-    if (error) throw new ApiError(500, error.message);
+
+    if (error) {
+      throw new ApiError(500, error.message);
+    }
     res.json(data ?? []);
   } catch (err) {
     next(err);
@@ -99,7 +132,10 @@ export async function suggestRecipients(req: Request, res: Response, next: NextF
 
 export async function analyzeTopics(req: Request, res: Response, next: NextFunction) {
   try {
-    const { messages } = z.object({ messages: z.array(z.string()) }).parse(req.body);
+    const { messages } = z.object({ 
+      messages: z.array(z.string()).max(50, "Maximum 50 messages allowed") 
+    }).parse(req.body);
+
     const result = await processMessageWithAI(
       `Identify the 3-5 most frequent topics across these messages, as short bullet points:\n${messages.join("\n")}`,
       []
@@ -110,27 +146,16 @@ export async function analyzeTopics(req: Request, res: Response, next: NextFunct
   }
 }
 
-// ✅ TEST ENDPOINT - No auth required
-export async function testGenerate(req: Request, res: Response) {
+// Test endpoint with rate limiting
+export async function testGenerate(req: Request, res: Response, next: NextFunction) {
   try {
-    const { message } = req.body;
-    console.log("🧪 Test AI called with:", message);
+    const { message } = z.object({ 
+      message: z.string().min(1, "Message is required").max(5000) 
+    }).parse(req.body);
 
-    if (!message) {
-      return res.status(400).json({ error: "Message is required" });
-    }
-
-    // For test endpoint, we don't have contacts, so pass empty array
     const result = await processMessageWithAI(message, []);
-
-    res.json({
-      success: true,
-      data: result
-    });
+    res.json({ success: true, data: result });
   } catch (err) {
-    console.error("❌ Test AI error:", err);
-    res.status(500).json({
-      error: err instanceof Error ? err.message : "Unknown error"
-    });
+    next(err);
   }
 }

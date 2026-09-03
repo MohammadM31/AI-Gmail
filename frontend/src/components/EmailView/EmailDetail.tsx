@@ -1,3 +1,4 @@
+// frontend/src/components/EmailView/EmailDetail.tsx
 import type { EmailItem } from "../../types";
 import { ChartRenderer } from "../Shared/ChartRenderer";
 import { sendEmail, getAttachmentUrl } from "../../services/apiClient";
@@ -15,8 +16,12 @@ export function EmailDetail({
   const [sending, setSending] = useState(false);
 
   async function handleOpenAttachment(path: string) {
-    const { url } = await getAttachmentUrl(path);
-    if (url && url !== "#") window.open(url, "_blank", "noopener,noreferrer");
+    try {
+      const { url } = await getAttachmentUrl(path);
+      if (url && url !== "#") window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      alert("Failed to open attachment: " + (err instanceof Error ? err.message : "Unknown error"));
+    }
   }
 
   async function handleSend() {
@@ -24,6 +29,8 @@ export function EmailDetail({
     try {
       const updated = await sendEmail(email.id);
       onUpdated(updated);
+    } catch (err) {
+      alert("Failed to send: " + (err instanceof Error ? err.message : "Unknown error"));
     } finally {
       setSending(false);
     }
