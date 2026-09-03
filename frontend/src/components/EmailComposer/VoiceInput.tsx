@@ -5,7 +5,6 @@ interface Props {
   onTranscript: (text: string) => void;
 }
 
-// Uses the browser's SpeechRecognition API where available.
 export function VoiceInput({ onTranscript }: Props) {
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +28,7 @@ export function VoiceInput({ onTranscript }: Props) {
       const recognition: SpeechRecognition = new SpeechRecognitionCtor();
       recognition.lang = "en-US";
       recognition.interimResults = true;
-      recognition.continuous = false;
+      // ❌ REMOVED: recognition.continuous = false; - not standard property
       
       recognition.onresult = (event) => {
         const transcript = Array.from(event.results)
