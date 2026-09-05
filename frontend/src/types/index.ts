@@ -44,7 +44,7 @@ export interface EmailItem {
   threadId: string | null;
   sentAt: string | null;
   createdAt: string;
-  pipelineStageId?: string | null; // ✅ ADDED
+  pipelineStageId?: string | null;
 }
 
 export interface UserSettingsData {
@@ -76,6 +76,7 @@ export interface Template {
   recipientName?: string;
 }
 
+// ✅ FIXED: Only one "pipeline" entry
 export type NavView =
   | "compose"
   | "inbox"
@@ -83,8 +84,7 @@ export type NavView =
   | "pipeline"
   | "templates"
   | "analytics"
-  | "settings"
-  | "pipeline"; // ✅ ADDED
+  | "settings";
 
 // ✅ ENHANCED: Pipeline Types with Timeline Support
 export interface PipelineStage {
@@ -93,28 +93,34 @@ export interface PipelineStage {
   description: string;
   status: 'pending' | 'in-progress' | 'complete';
   order: number;
-  startedAt?: string | null;      // ✅ ADDED
-  completedAt?: string | null;    // ✅ ADDED
-  dueDate?: string | null;        // ✅ ADDED
-  duration?: number;              // ✅ ADDED (in days)
-  emailIds?: string[];            // ✅ ADDED (related emails)
+  startedAt?: string | null;
+  completedAt?: string | null;
+  dueDate?: string | null;
+  duration?: number;
+  emailIds?: string[];
+  timeSpent?: number;
+  timeEntries?: {
+    start: string;
+    end?: string;
+    note?: string;
+  }[];
 }
 
 export interface Pipeline {
   id: string;
+  userId?: string;
   contactId: string;
   contactName: string;
   projectName: string;
   projectType: 'sales' | 'development' | 'event' | 'job' | 'general';
   stages: PipelineStage[];
-  status: 'active' | 'completed' | 'archived'; // ✅ ADDED
+  status: 'active' | 'completed' | 'archived';
   createdAt: string;
   updatedAt: string;
-  completedAt?: string | null;    // ✅ ADDED
-  totalDuration?: number;         // ✅ ADDED (in days)
+  completedAt?: string | null;
+  totalDuration?: number;
 }
 
-// ✅ NEW: Pipeline History
 export interface PipelineHistory {
   id: string;
   pipelineId: string;
@@ -127,7 +133,6 @@ export interface PipelineHistory {
   note?: string;
 }
 
-// ✅ NEW: Pipeline Metrics
 export interface PipelineMetrics {
   avgCompletionDays: number;
   successRate: number;

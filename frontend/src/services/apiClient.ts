@@ -8,6 +8,9 @@ import type {
   User,
   UserSettingsData,
   Pipeline,
+  PipelineStage,     // ✅ ADDED
+  PipelineMetrics,   // ✅ ADDED
+  PipelineHistory,   // ✅ ADDED
 } from "../types";
 import { useUserStore } from "../stores/userStore";
 
@@ -391,23 +394,17 @@ export async function updatePipeline(contactId: string, threadId: string) {
   });
 }
 
-
 export async function resolveRecipientsLocally(
   userId: string,
   raw: { name: string; email: string | null }[]
 ): Promise<{ name: string; email: string | null; contactId: string | null }[]> {
-  // This is a fallback for when the backend resolver is too strict
-  // It allows email-only recipients to pass through
   if (!raw || raw.length === 0) return [];
-  
-  // If we can't resolve, just pass through with contactId: null
   return raw.map((r) => ({
     name: r.name,
     email: r.email,
     contactId: null,
   }));
 }
-
 
 // ---- Pipeline Extended ----
 export async function updatePipelineStages(pipelineId: string, stages: PipelineStage[]) {

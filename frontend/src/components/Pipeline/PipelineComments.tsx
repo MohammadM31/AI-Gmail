@@ -1,5 +1,5 @@
 // frontend/src/components/Pipeline/PipelineComments.tsx
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react"; // ✅ ADDED React
 import { supabase } from "../../services/supabaseClient";
 import { useUserStore } from "../../stores/userStore";
 
@@ -119,6 +119,14 @@ export function PipelineComments({ pipelineId }: PipelineCommentsProps) {
     return `${days}d ago`;
   };
 
+  // ✅ Fixed onKeyDown type
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      addComment();
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -170,12 +178,7 @@ export function PipelineComments({ pipelineId }: PipelineCommentsProps) {
           placeholder="Add a comment..."
           value={newComment}
           onChange={(e) => setNewComment(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              addComment();
-            }
-          }}
+          onKeyDown={handleKeyDown}
           disabled={submitting}
         />
         <button

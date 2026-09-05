@@ -17,7 +17,6 @@ import { PipelineDashboard } from "./components/Pipeline/PipelineDashboard";
 
 type NavView = "compose" | "inbox" | "contacts" | "templates" | "analytics" | "settings" | "pipeline";
 
-// ✅ Composer state stored at App level to persist across tab switches
 interface ComposerState {
   text: string;
   recipients: { name: string; email: string | null }[];
@@ -33,7 +32,6 @@ function App() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  // ✅ Persist composer state across tab switches
   const [composerState, setComposerState] = useState<ComposerState>({
     text: "",
     recipients: [],
@@ -42,20 +40,7 @@ function App() {
     saved: false,
   });
 
-  // ✅ Reset composer when navigating away from compose
-  const resetComposer = () => {
-    setComposerState({
-      text: "",
-      recipients: [],
-      attachments: [],
-      result: null,
-      saved: false,
-    });
-  };
-
-  // ✅ Handle navigation - clears selected states when switching tabs
   const handleNavSelect = (view: NavView) => {
-    // Clear selected email/thread when navigating away from inbox
     if (view !== "inbox") {
       setSelectedEmail(null);
       setSelectedThreadId(null);
@@ -85,7 +70,6 @@ function App() {
   }
 
   function renderContent() {
-    // ✅ Show ThreadView when a thread is selected
     if (selectedThreadId) {
       return (
         <ThreadView
@@ -95,7 +79,6 @@ function App() {
       );
     }
 
-    // ✅ Show EmailDetail when an email is selected but no thread
     if (selectedEmail) {
       return (
         <div className="space-y-4">
@@ -134,7 +117,6 @@ function App() {
             key="composer"
             threadId={null}
             onEmailSent={() => {}}
-            // ✅ Pass composer state and setter
             externalState={composerState}
             onStateChange={setComposerState}
           />
@@ -143,8 +125,8 @@ function App() {
         return <EmailList onSelect={handleEmailSelect} />;
       case "contacts":
         return <ContactManager />;
-        case "pipeline":
-  return <PipelineDashboard />;
+      case "pipeline":
+        return <PipelineDashboard />;
       case "templates":
         return (
           <TemplateManager
@@ -154,7 +136,6 @@ function App() {
             }}
           />
         );
-        
       case "analytics":
         return <Analytics />;
       case "settings":
@@ -195,6 +176,7 @@ function App() {
                 {activeView === "compose" && "Compose"}
                 {activeView === "inbox" && "Inbox"}
                 {activeView === "contacts" && "Contacts"}
+                {activeView === "pipeline" && "Pipelines"} {/* ✅ ADDED */}
                 {activeView === "templates" && "Templates"}
                 {activeView === "analytics" && "Analytics"}
                 {activeView === "settings" && "Settings"}
