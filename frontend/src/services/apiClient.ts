@@ -409,25 +409,28 @@ export async function resolveRecipientsLocally(
 }
 
 
-// ---- Pipeline Enhanced ----
-export async function updatePipelineStage(
-  pipelineId: string,
-  stageId: string,
-  status: string
-) {
-  return request<{
-    success: boolean;
-    stage: PipelineStage;
-  }>(`/api/pipeline/${pipelineId}/stage/${stageId}`, {
+// ---- Pipeline Extended ----
+export async function updatePipelineStages(pipelineId: string, stages: PipelineStage[]) {
+  return request<{ success: boolean }>(`/api/pipeline/${pipelineId}/stages`, {
     method: 'PUT',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ stages }),
   });
 }
 
-export async function getPipelineMetrics() {
-  return request<PipelineMetrics>('/api/pipeline/metrics');
+export async function getPipelineNotifications() {
+  return request<{
+    overdue: { pipelineId: string; stageName: string; daysOverdue: number }[];
+    stuck: { pipelineId: string; stageName: string; daysInProgress: number }[];
+  }>('/api/pipeline/notifications');
 }
 
-export async function getPipelineHistory(pipelineId: string) {
-  return request<PipelineHistory[]>(`/api/pipeline/${pipelineId}/history`);
+export async function addPipelineComment(pipelineId: string, content: string) {
+  return request<{ success: boolean; comment: any }>(`/api/pipeline/${pipelineId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function getPipelineComments(pipelineId: string) {
+  return request<any[]>(`/api/pipeline/${pipelineId}/comments`);
 }

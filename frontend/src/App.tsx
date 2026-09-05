@@ -13,8 +13,9 @@ import { Analytics } from "./components/Dashboard/Analytics";
 import { Settings } from "./components/Settings/Settings";
 import { ErrorBoundary } from "./components/Shared/ErrorBoundary";
 import { EmailItem } from "./types";
+import { PipelineDashboard } from "./components/Pipeline/PipelineDashboard";
 
-type NavView = "compose" | "inbox" | "contacts" | "templates" | "analytics" | "settings";
+type NavView = "compose" | "inbox" | "contacts" | "templates" | "analytics" | "settings" | "pipeline";
 
 // ✅ Composer state stored at App level to persist across tab switches
 interface ComposerState {
@@ -142,6 +143,8 @@ function App() {
         return <EmailList onSelect={handleEmailSelect} />;
       case "contacts":
         return <ContactManager />;
+        case "pipeline":
+  return <PipelineDashboard />;
       case "templates":
         return (
           <TemplateManager
@@ -151,6 +154,7 @@ function App() {
             }}
           />
         );
+        
       case "analytics":
         return <Analytics />;
       case "settings":

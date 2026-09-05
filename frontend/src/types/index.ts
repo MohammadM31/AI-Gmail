@@ -80,6 +80,7 @@ export type NavView =
   | "compose"
   | "inbox"
   | "contacts"
+  | "pipeline"
   | "templates"
   | "analytics"
   | "settings"

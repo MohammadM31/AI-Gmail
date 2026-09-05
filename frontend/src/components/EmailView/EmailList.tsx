@@ -1,17 +1,21 @@
 // frontend/src/components/EmailView/EmailList.tsx
 import { useEffect, useState, useCallback, useMemo, memo } from "react";
+import InfiniteScroll from "react-infinite-scroll-component";
+import { useDebounce } from "../../hooks/useDebounce";
+import { Skeleton, SkeletonList } from "../Shared/Skeleton";
+import { toast } from "sonner";
 import type { EmailItem } from "../../types";
 import { listEmails } from "../../services/apiClient";
 import { useUserStore } from "../../stores/userStore";
 
 // ✅ Memoized Email Card
-const EmailCard = memo(function EmailCard({ 
-  email, 
-  onSelect, 
-  currentUserId 
-}: { 
-  email: EmailItem; 
-  onSelect: (email: EmailItem) => void; 
+const EmailCard = memo(function EmailCard({
+  email,
+  onSelect,
+  currentUserId,
+}: {
+  email: EmailItem;
+  onSelect: (email: EmailItem) => void;
   currentUserId: string | null;
 }) {
   const getInitials = (email: EmailItem) => {
@@ -47,7 +51,7 @@ const EmailCard = memo(function EmailCard({
     const now = new Date();
     const isToday = d.toDateString() === now.toDateString();
     const isYesterday = d.toDateString() === new Date(now.setDate(now.getDate() - 1)).toDateString();
-    
+
     if (isToday) {
       return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     } else if (isYesterday) {
@@ -95,7 +99,7 @@ const EmailCard = memo(function EmailCard({
 
         <div className="flex items-center justify-between gap-2 mt-0.5">
           <p className="text-xs opacity-60 truncate">
-            {email.bulletPoints[0] || email.content || "No preview"}
+            {email.bulletPoints[0] || email.content?.substring(0, 100) || "No preview"}
           </p>
           <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${getStatusColor(email.status)}`}>
             {email.status}
@@ -117,11 +121,10 @@ const EmailCard = memo(function EmailCard({
   );
 });
 
-// ✅ Use React.memo for the entire component
+// ✅ Main EmailList Component
 export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (email: EmailItem) => void }) {
   const [emails, setEmails] = useState<EmailItem[]>([]);
   const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [filterType, setFilterType] = useState<"all" | "subject" | "recipient" | "status">("all");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "subject-asc" | "subject-desc" | "status" | "recipient">("newest");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -130,93 +133,137 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
   const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [total, setTotal] = useState(0);
   const currentUser = useUserStore((s) => s.user);
 
   // ✅ Debounce search query
+  const debouncedQuery = useDebounce(query, 300);
+
+  // ✅ Load function with pagination
+  const load = useCallback(
+    async (reset: boolean = true) => {
+      if (reset) {
+        setPage(1);
+        setHasMore(true);
+        setLoading(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+      try {
+        const params = new URLSearchParams();
+
+        if (debouncedQuery && filterType !== "all") {
+          params.append("q", debouncedQuery);
+          params.append("filterType", filterType);
+        } else if (debouncedQuery) {
+          params.append("q", debouncedQuery);
+        }
+
+        if (statusFilter !== "all") {
+          params.append("status", statusFilter);
+        }
+
+        if (dateRange === "today") {
+          const today = new Date().toISOString().split("T")[0];
+          params.append("dateFrom", today);
+          params.append("dateTo", today);
+        } else if (dateRange === "week") {
+          const now = new Date();
+          const weekAgo = new Date(now);
+          weekAgo.setDate(now.getDate() - 7);
+          params.append("dateFrom", weekAgo.toISOString().split("T")[0]);
+          params.append("dateTo", now.toISOString().split("T")[0]);
+        } else if (dateRange === "month") {
+          const now = new Date();
+          const monthAgo = new Date(now);
+          monthAgo.setMonth(now.getMonth() - 1);
+          params.append("dateFrom", monthAgo.toISOString().split("T")[0]);
+          params.append("dateTo", now.toISOString().split("T")[0]);
+        } else if (dateRange === "custom" && dateFrom && dateTo) {
+          params.append("dateFrom", dateFrom);
+          params.append("dateTo", dateTo);
+        }
+
+        params.append("sortBy", sortBy);
+        params.append("page", String(reset ? 1 : page + 1));
+        params.append("pageSize", "20");
+
+        const response = await listEmails(params.toString());
+
+        if (reset) {
+          setEmails(response.items);
+        } else {
+          setEmails((prev) => [...prev, ...response.items]);
+        }
+
+        setTotal(response.total);
+        setHasMore(response.items.length < response.total);
+        setPage(reset ? 1 : page + 1);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Failed to load emails";
+        setError(errorMessage);
+        toast.error("Failed to load emails", { description: errorMessage });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [debouncedQuery, filterType, sortBy, statusFilter, dateRange, dateFrom, dateTo, page]
+  );
+
+  // ✅ Initial load and when filters change
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(query);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  // ✅ Memoized load function
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams();
-      
-      if (debouncedQuery && filterType !== "all") {
-        params.append("q", debouncedQuery);
-        params.append("filterType", filterType);
-      } else if (debouncedQuery) {
-        params.append("q", debouncedQuery);
-      }
-
-      if (statusFilter !== "all") {
-        params.append("status", statusFilter);
-      }
-
-      if (dateRange === "today") {
-        const today = new Date().toISOString().split("T")[0];
-        params.append("dateFrom", today);
-        params.append("dateTo", today);
-      } else if (dateRange === "week") {
-        const now = new Date();
-        const weekAgo = new Date(now);
-        weekAgo.setDate(now.getDate() - 7);
-        params.append("dateFrom", weekAgo.toISOString().split("T")[0]);
-        params.append("dateTo", now.toISOString().split("T")[0]);
-      } else if (dateRange === "month") {
-        const now = new Date();
-        const monthAgo = new Date(now);
-        monthAgo.setMonth(now.getMonth() - 1);
-        params.append("dateFrom", monthAgo.toISOString().split("T")[0]);
-        params.append("dateTo", now.toISOString().split("T")[0]);
-      } else if (dateRange === "custom" && dateFrom && dateTo) {
-        params.append("dateFrom", dateFrom);
-        params.append("dateTo", dateTo);
-      }
-
-      params.append("sortBy", sortBy);
-
-      const { items } = await listEmails(params.toString());
-      setEmails(items);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load emails");
-    } finally {
-      setLoading(false);
-    }
-  }, [debouncedQuery, filterType, sortBy, statusFilter, dateRange, dateFrom, dateTo]);
-
-  useEffect(() => {
-    load();
+    load(true);
   }, [load]);
 
-  // ✅ Memoize the email list to prevent unnecessary re-renders
+  // ✅ Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!loading) {
+        load(true);
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [load, loading]);
+
+  // ✅ Load more for infinite scroll
+  const loadMore = useCallback(() => {
+    if (!loading && hasMore) {
+      load(false);
+    }
+  }, [loading, hasMore, load]);
+
+  // ✅ Memoize the email list
   const emailList = useMemo(() => {
     return emails.map((email) => (
       <li key={email.id}>
-        <EmailCard 
-          email={email} 
-          onSelect={onSelect} 
-          currentUserId={currentUser?.id || null}
-        />
+        <EmailCard email={email} onSelect={onSelect} currentUserId={currentUser?.id || null} />
       </li>
     ));
   }, [emails, onSelect, currentUser]);
 
+  // ✅ Handle date range change
+  const handleDateRangeChange = (value: typeof dateRange) => {
+    setDateRange(value);
+    if (value !== "custom") {
+      setDateFrom("");
+      setDateTo("");
+    }
+  };
+
   return (
     <div className="space-y-4">
+      {/* Search and Filters Bar */}
       <div className="flex flex-wrap gap-2 items-center">
         <div className="flex-1 min-w-[200px]">
           <input
-            className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none"
-            placeholder="Search emails…"
+            className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none focus:border-highlight transition"
+            placeholder="Search emails… (Ctrl+K to focus)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && load()}
+            onKeyDown={(e) => e.key === "Enter" && load(true)}
           />
         </div>
 
@@ -258,7 +305,7 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
         <select
           className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1.5 text-sm outline-none"
           value={dateRange}
-          onChange={(e) => setDateRange(e.target.value as typeof dateRange)}
+          onChange={(e) => handleDateRangeChange(e.target.value as typeof dateRange)}
         >
           <option value="all">Any time</option>
           <option value="today">Today</option>
@@ -285,26 +332,63 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
         )}
 
         <button
-          onClick={load}
-          className="rounded-full bg-highlight px-4 py-1.5 text-sm font-medium text-white hover:opacity-90"
+          onClick={() => load(true)}
+          className="rounded-full bg-highlight px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 transition"
         >
           Apply
         </button>
+
+        {/* Results count */}
+        {!loading && emails.length > 0 && (
+          <span className="text-xs opacity-40 ml-2">
+            {emails.length} of {total}
+          </span>
+        )}
       </div>
 
-      {loading && <p className="text-sm opacity-60">Loading…</p>}
+      {/* Loading/Error States */}
+      {loading && page === 1 && <SkeletonList count={5} />}
+
       {error && (
-        <p className="text-sm text-highlight">
-          {error} <button className="underline" onClick={load}>Retry</button>
-        </p>
-      )}
-      {!loading && !error && emails.length === 0 && (
-        <p className="text-sm opacity-60">No emails found matching your filters.</p>
+        <div className="rounded-lg bg-red-500/10 p-3 text-sm text-red-500">
+          {error}
+          <button className="underline ml-2 hover:opacity-80" onClick={() => load(true)}>
+            Retry
+          </button>
+        </div>
       )}
 
-      <ul className="divide-y divide-black/10 dark:divide-white/10 rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark overflow-hidden">
-        {emailList}
-      </ul>
+      {!loading && !error && emails.length === 0 && (
+        <div className="text-center py-12 text-sm opacity-60">
+          {query || statusFilter !== "all" || dateRange !== "all"
+            ? "No emails match your filters. Try adjusting your search."
+            : "📭 No emails yet. Start composing!"}
+        </div>
+      )}
+
+      {/* Infinite Scroll Email List */}
+      <InfiniteScroll
+        dataLength={emails.length}
+        next={loadMore}
+        hasMore={hasMore}
+        loader={
+          <div className="py-4">
+            <SkeletonList count={3} />
+          </div>
+        }
+        endMessage={
+          emails.length > 0 && (
+            <div className="text-center py-6 text-sm opacity-40">
+              🎉 You've seen all {emails.length} emails
+            </div>
+          )
+        }
+        scrollableTarget="main-content"
+      >
+        <ul className="divide-y divide-black/10 dark:divide-white/10 rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark overflow-hidden">
+          {emailList}
+        </ul>
+      </InfiniteScroll>
     </div>
   );
 });

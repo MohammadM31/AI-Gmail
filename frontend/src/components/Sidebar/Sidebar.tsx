@@ -4,6 +4,7 @@ const NAV_ITEMS: { key: NavView; label: string }[] = [
   { key: "compose", label: "Compose" },
   { key: "inbox", label: "Inbox" },
   { key: "contacts", label: "Contacts" },
+  { key: "pipeline", label: "Pipeline" },
   { key: "templates", label: "Templates" },
   { key: "analytics", label: "Analytics" },
   { key: "settings", label: "Settings" },
