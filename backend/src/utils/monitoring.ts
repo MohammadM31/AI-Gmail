@@ -37,7 +37,7 @@ export function sentryErrorHandler(app: any): void {
 
 export function captureException(error: Error, context?: Record<string, any>): void {
   if (process.env.SENTRY_DSN) {
-    Sentry.withScope((scope: any) => { // ✅ FIXED
+    Sentry.withScope((scope) => {
       if (context) {
         scope.setContext("Context", context);
       }

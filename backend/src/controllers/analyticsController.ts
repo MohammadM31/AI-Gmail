@@ -53,25 +53,11 @@ export async function topics(req: Request, res: Response, next: NextFunction) {
 
     let query = supabase
       .from("Email")
-      .select("subject, content, recipients")
+      .select("subject, content, recipients, createdAt")
       .eq("senderId", req.auth!.userId)
       .eq("status", "sent");
 
-    if (contactId) {
-      const { data: contact, error: contactError } = await supabase
-        .from("Contact")
-        .select("name")
-        .eq("id", contactId)
-        .eq("userId", req.auth!.userId)
-        .single();
-
-      if (contactError || !contact) {
-        throw new ApiError(404, "Contact not found");
-      }
-
-      query = query.contains("recipients", [{ name: contact.name }]);
-    }
-
+    // Filter by date range
     if (startDate) {
       query = query.gte("createdAt", new Date(startDate).toISOString());
     }
@@ -93,8 +79,36 @@ export async function topics(req: Request, res: Response, next: NextFunction) {
       });
     }
 
-    // ✅ FIX: Decrypt email content before analysis
-    const decryptedEmails = emails.map((e) => decryptEmailContent(e));
+    // ✅ FIX: Filter emails by contact using JavaScript (instead of .contains())
+    let contactEmails = emails;
+    if (contactId) {
+      const { data: contact, error: contactError } = await supabase
+        .from("Contact")
+        .select("name")
+        .eq("id", contactId)
+        .eq("userId", req.auth!.userId)
+        .single();
+
+      if (contactError || !contact) {
+        throw new ApiError(404, "Contact not found");
+      }
+
+      contactEmails = emails.filter((email) => {
+        const recipients = email.recipients || [];
+        return recipients.some((r: any) => r.name?.toLowerCase() === contact.name.toLowerCase());
+      });
+    }
+
+    if (contactEmails.length === 0) {
+      return res.json({
+        topics: [],
+        totalEmails: 0,
+        filters: { contactId, startDate, endDate },
+      });
+    }
+
+    // ✅ Decrypt email content before analysis
+    const decryptedEmails = contactEmails.map((e) => decryptEmailContent(e));
 
     // ✅ Use decrypted content
     const subjects = decryptedEmails.map((e) => e.subject).join("\n");
@@ -109,7 +123,7 @@ export async function topics(req: Request, res: Response, next: NextFunction) {
 
     const topicCounts: Record<string, number> = {};
     for (const topic of result.bulletPoints) {
-      const count = emails.filter((e) =>
+      const count = contactEmails.filter((e) =>
         e.subject.toLowerCase().includes(topic.toLowerCase())
       ).length;
       topicCounts[topic] = count;
@@ -121,7 +135,7 @@ export async function topics(req: Request, res: Response, next: NextFunction) {
 
     res.json({
       topics: sortedTopics.slice(0, Number(limit)),
-      totalEmails: emails.length,
+      totalEmails: contactEmails.length,
       filters: { contactId, startDate, endDate },
     });
   } catch (err) {

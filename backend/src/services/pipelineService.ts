@@ -10,6 +10,17 @@ export interface PipelineStage {
   description: string;
   status: 'pending' | 'in-progress' | 'complete';
   order: number;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  dueDate?: string | null;
+  duration?: number;
+  emailIds?: string[];
+  timeSpent?: number;
+  timeEntries?: {
+    start: string;
+    end?: string;
+    note?: string;
+  }[];
 }
 
 export interface ProjectPipeline {
@@ -28,7 +39,7 @@ export async function generatePipelineFromThread(
   try {
     const { data: emails, error } = await supabase
       .from("Email")
-      .select("content, subject, recipients, createdAt, senderId") // ✅ ADDED senderId
+      .select("content, subject, recipients, createdAt, senderId, id")
       .eq("threadId", threadId)
       .order("createdAt", { ascending: true });
 
@@ -63,6 +74,7 @@ export async function generatePipelineFromThread(
       1. What is the main topic, project, or goal being discussed? 
       2. What are the actual steps or milestones in this process?
       3. What is the current status of each step?
+      4. Estimate reasonable durations for each stage in days.
 
       Return a JSON object with:
       {
@@ -72,7 +84,8 @@ export async function generatePipelineFromThread(
           {
             "name": "string",
             "description": "string",
-            "status": "pending | in-progress | complete"
+            "status": "pending | in-progress | complete",
+            "estimatedDuration": number (in days)
           }
         ]
       }
@@ -95,13 +108,25 @@ export async function generatePipelineFromThread(
       }
     }
 
-    const stages = pipelineData.stages.map((stage: any, index: number) => ({
-      id: crypto.randomUUID(),
-      name: stage.name || `Step ${index + 1}`,
-      description: stage.description || '',
-      status: stage.status || 'pending',
-      order: index
-    }));
+    const stages = pipelineData.stages.map((stage: any, index: number) => {
+      const now = new Date().toISOString();
+      return {
+        id: crypto.randomUUID(),
+        name: stage.name || `Step ${index + 1}`,
+        description: stage.description || '',
+        status: stage.status || 'pending',
+        order: index,
+        startedAt: index === 0 ? now : null,
+        completedAt: stage.status === 'complete' ? now : null,
+        dueDate: stage.estimatedDuration ? 
+          new Date(Date.now() + (stage.estimatedDuration || 7) * 24 * 60 * 60 * 1000).toISOString() : 
+          null,
+        duration: stage.estimatedDuration || 0,
+        emailIds: emails.map((e: any) => e.id),
+        timeSpent: 0,
+        timeEntries: [],
+      };
+    });
 
     return {
       contactId,
@@ -114,4 +139,74 @@ export async function generatePipelineFromThread(
     logger.error({ error, contactId, threadId }, "Failed to generate pipeline");
     throw error;
   }
+}
+
+export async function updateStageTime(
+  pipelineId: string,
+  stageId: string,
+  action: 'start' | 'stop' | 'add',
+  note?: string
+) {
+  const { data: pipeline, error } = await supabase
+    .from("Pipeline")
+    .select("stages")
+    .eq("id", pipelineId)
+    .single();
+
+  if (error || !pipeline) throw new Error("Pipeline not found");
+
+  const stages = pipeline.stages.map((stage: any) => {
+    if (stage.id === stageId) {
+      const now = new Date().toISOString();
+      
+      if (action === 'start') {
+        return {
+          ...stage,
+          timeEntries: [...(stage.timeEntries || []), { start: now, note }],
+        };
+      }
+      
+      if (action === 'stop') {
+        const entries = stage.timeEntries || [];
+        const lastEntry = entries[entries.length - 1];
+        if (lastEntry && !lastEntry.end) {
+          lastEntry.end = now;
+          const start = new Date(lastEntry.start);
+          const end = new Date(now);
+          const timeSpent = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
+          return {
+            ...stage,
+            timeEntries: entries,
+            timeSpent: (stage.timeSpent || 0) + timeSpent,
+          };
+        }
+      }
+      
+      if (action === 'add') {
+        return {
+          ...stage,
+          timeEntries: [...(stage.timeEntries || []), { start: now, end: now, note }],
+        };
+      }
+    }
+    return stage;
+  });
+
+  await supabase
+    .from("Pipeline")
+    .update({ stages })
+    .eq("id", pipelineId);
+
+  return stages;
+}
+
+export async function suggestPipelineTemplate(conversation: string) {
+  const result = await processMessageWithAI(
+    `Based on this conversation, suggest a pipeline template:
+    ${conversation}
+    Return template name, stages, and estimated durations in days.
+    Format as JSON with: { "name": string, "stages": [{ "name": string, "description": string, "estimatedDuration": number }] }`,
+    []
+  );
+  return result;
 }

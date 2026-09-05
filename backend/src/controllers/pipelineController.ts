@@ -1,8 +1,7 @@
-// backend/src/controllers/pipelineController.ts
 import { Request, Response, NextFunction } from "express";
 import { supabase } from "../utils/supabaseClient";
 import { ApiError } from "../middleware/errorHandler";
-import { generatePipelineFromThread } from "../services/pipelineService";
+import { generatePipelineFromThread, updateStageTime, suggestPipelineTemplate } from "../services/pipelineService";
 
 export async function getPipeline(req: Request, res: Response, next: NextFunction) {
   try {
@@ -20,7 +19,6 @@ export async function getPipeline(req: Request, res: Response, next: NextFunctio
       return res.json({ exists: false, pipeline: null });
     }
 
-    // ✅ Calculate total duration
     let totalDuration = 0;
     if (data.stages && data.stages.length > 0) {
       const completedStages = data.stages.filter((s: any) => s.status === 'complete');
@@ -40,6 +38,7 @@ export async function getPipeline(req: Request, res: Response, next: NextFunctio
       exists: true,
       pipeline: {
         ...data,
+        userId,
         totalDuration,
       }
     });
@@ -310,6 +309,133 @@ export async function getPipelineMetrics(req: Request, res: Response, next: Next
       avgDurationByType,
       monthlyTrends: monthlyTrendsList,
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+
+// ✅ NEW: Update pipeline stages (for drag & drop reordering)
+export async function updatePipelineStages(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { pipelineId } = req.params;
+    const { stages } = req.body;
+    const userId = req.auth!.userId;
+
+    const { data, error } = await supabase
+      .from("Pipeline")
+      .update({
+        stages,
+        updatedAt: new Date().toISOString(),
+      })
+      .eq("id", pipelineId)
+      .eq("userId", userId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new ApiError(500, error.message);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ✅ NEW: Get pipeline notifications
+export async function getPipelineNotifications(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.auth!.userId;
+
+    const { data: pipelines, error } = await supabase
+      .from("Pipeline")
+      .select("*")
+      .eq("userId", userId)
+      .eq("status", "active");
+
+    if (error) {
+      throw new ApiError(500, error.message);
+    }
+
+    const overdue: any[] = [];
+    const stuck: any[] = [];
+
+    for (const pipeline of pipelines) {
+      for (const stage of pipeline.stages) {
+        // Check overdue
+        if (stage.status !== 'complete' && stage.dueDate) {
+          const dueDate = new Date(stage.dueDate);
+          const now = new Date();
+          const daysOverdue = Math.round((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysOverdue > 0) {
+            overdue.push({
+              pipelineId: pipeline.id,
+              projectName: pipeline.projectName,
+              stageName: stage.name,
+              daysOverdue,
+            });
+          }
+        }
+
+        // Check stuck
+        if (stage.status === 'in-progress' && stage.startedAt) {
+          const started = new Date(stage.startedAt);
+          const now = new Date();
+          const daysInProgress = Math.round((now.getTime() - started.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysInProgress > 14) {
+            stuck.push({
+              pipelineId: pipeline.id,
+              projectName: pipeline.projectName,
+              stageName: stage.name,
+              daysInProgress,
+            });
+          }
+        }
+      }
+    }
+
+    res.json({ overdue, stuck });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateStageTimeTracking(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { pipelineId, stageId } = req.params;
+    const { action, note } = req.body;
+    const userId = req.auth!.userId;
+
+    // Verify ownership
+    const { data: pipeline, error: fetchError } = await supabase
+      .from("Pipeline")
+      .select("id")
+      .eq("id", pipelineId)
+      .eq("userId", userId)
+      .single();
+
+    if (fetchError || !pipeline) {
+      throw new ApiError(404, "Pipeline not found");
+    }
+
+    const stages = await updateStageTime(pipelineId, stageId, action, note);
+    
+    res.json({ success: true, stages });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function suggestPipelineTemplate(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { conversation } = req.body;
+    if (!conversation) {
+      throw new ApiError(400, "conversation is required");
+    }
+
+    const result = await suggestPipelineTemplate(conversation);
+    res.json({ template: result });
   } catch (err) {
     next(err);
   }

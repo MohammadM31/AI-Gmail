@@ -1,136 +1,103 @@
-// backend/src/services/pipelineService.ts
-import crypto from "crypto";
-import { supabase } from "../utils/supabaseClient";
-import { processMessageWithAI } from "./geminiService";
+// backend/src/services/geminiService.ts
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { logger } from "../utils/logger";
 
-export interface PipelineStage {
-  id: string;
-  name: string;
-  description: string;
-  status: 'pending' | 'in-progress' | 'complete';
-  order: number;
-  startedAt?: string | null;
-  completedAt?: string | null;
-  dueDate?: string | null;
-  duration?: number;
-  emailIds?: string[];
+export interface AiProcessResult {
+  recipients: { name: string; email: string | null }[];
+  subject: string;
+  bulletPoints: string[];
+  chart: {
+    type: string;
+    title: string;
+    labels: string[];
+    values: number[];
+  } | null;
+  tone: "professional" | "casual" | "urgent";
 }
 
-export interface ProjectPipeline {
-  contactId: string;
-  contactName: string;
-  projectName: string;
-  projectType: 'sales' | 'development' | 'event' | 'job' | 'general';
-  stages: PipelineStage[];
+const genAI = process.env.GEMINI_API_KEY
+  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+  : null;
+
+const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+
+function buildPrompt(input: string, contacts: string[], contentLength: number): string {
+  let bulletGuidance: string;
+  if (contentLength > 300) {
+    bulletGuidance = "8 to 12 concise bullet points covering all key information";
+  } else if (contentLength > 150) {
+    bulletGuidance = "5 to 8 concise bullet points covering the main points";
+  } else {
+    bulletGuidance = "2 to 4 concise bullet points summarizing the key message";
+  }
+
+  const contactList = contacts.length > 0 
+    ? `The user has the following contacts: ${contacts.join(', ')}.` 
+    : 'The user has no contacts saved yet.';
+
+  return `
+You are an assistant that converts a rough email brief into structured data.
+
+${contactList}
+CRITICAL: Only extract recipient names that exactly match or closely match names in this contact list. If a name in the text doesn't match any contact, DO NOT include it in the recipients array. If no valid recipients are found, return an empty recipients array.
+
+Return ONLY valid JSON (no markdown fences) matching exactly this shape:
+
+{
+  "recipients": [{"name": string, "email": string | null}],
+  "subject": string,
+  "bulletPoints": string[],
+  "chart": {
+    "type": "bar" | "line" | "pie" | "doughnut" | "radar" | "polarArea" | "scatter" | "bubble",
+    "title": string,
+    "labels": string[],
+    "values": number[]
+  } | null,
+  "tone": "professional" | "casual" | "urgent"
 }
 
-export async function generatePipelineFromThread(
-  userId: string,
-  contactId: string,
-  threadId: string
-): Promise<ProjectPipeline> {
-  try {
-    const { data: emails, error } = await supabase
-      .from("Email")
-      .select("content, subject, recipients, createdAt, senderId, id")
-      .eq("threadId", threadId)
-      .order("createdAt", { ascending: true });
+Message to process:
+"""${input}"""
+`;
+}
 
-    if (error) throw new Error(`Failed to fetch emails: ${error.message}`);
-    if (!emails || emails.length === 0) {
-      throw new Error("No emails found in this thread");
-    }
-
-    const { data: contact, error: contactError } = await supabase
-      .from("Contact")
-      .select("name")
-      .eq("id", contactId)
-      .eq("userId", userId)
-      .single();
-
-    if (contactError || !contact) {
-      throw new Error("Contact not found");
-    }
-
-    const conversation = emails
-      .map((e) => `From: ${e.senderId === userId ? 'You' : contact.name}\nSubject: ${e.subject}\nContent: ${e.content}`)
-      .join("\n---\n");
-
-    // ✅ Enhanced prompt for better stage extraction with dates
-    const result = await processMessageWithAI(
-      `You are an AI that analyzes email conversations and extracts the workflow or process being discussed.
-
-      Analyze this email conversation between the user and ${contact.name}:
-
-      ${conversation}
-
-      Based on the conversation, identify:
-      1. What is the main topic, project, or goal being discussed? 
-      2. What are the actual steps or milestones in this process?
-      3. What is the current status of each step?
-      4. Estimate reasonable durations for each stage in days.
-
-      Return a JSON object with:
-      {
-        "projectName": "string",
-        "projectType": "sales | development | event | job | general",
-        "stages": [
-          {
-            "name": "string",
-            "description": "string",
-            "status": "pending | in-progress | complete",
-            "estimatedDuration": number (in days)
-          }
-        ]
-      }
-
-      Only return valid JSON, no other text.`,
-      []
+// ✅ EXPORTED - no self-import here
+export async function processMessageWithAI(
+  input: string,
+  contacts: string[] = []
+): Promise<AiProcessResult> {
+  if (!genAI) {
+    throw new Error(
+      "GEMINI_API_KEY is not configured on the backend. Set it in backend/.env."
     );
+  }
 
-    let pipelineData;
-    try {
-      const cleanedText = result.bulletPoints.join(' ').replace(/```json/g, '').replace(/```/g, '').trim();
-      pipelineData = JSON.parse(cleanedText);
-    } catch (parseError) {
-      const rawText = JSON.stringify(result);
-      const match = rawText.match(/\{[^]*\}/);
-      if (match) {
-        pipelineData = JSON.parse(match[0]);
+  const contentLength = input.length;
+  const prompt = buildPrompt(input, contacts, contentLength);
+
+  const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+  const result = await model.generateContent(prompt);
+  const text = result.response.text().trim();
+
+  const cleaned = text.replace(/^```json\s*|```$/g, "").trim();
+
+  try {
+    const parsed = JSON.parse(cleaned) as AiProcessResult;
+    
+    if (contacts.length > 0 && parsed.recipients.length > 0) {
+      const validRecipients = parsed.recipients.filter((r) =>
+        contacts.some((c) => c.toLowerCase() === r.name.toLowerCase())
+      );
+      if (validRecipients.length === 0) {
+        parsed.recipients = [];
       } else {
-        throw new Error("Failed to parse AI response");
+        parsed.recipients = validRecipients;
       }
     }
-
-    // ✅ Enhanced stages with dates and email tracking
-    const stages = pipelineData.stages.map((stage: any, index: number) => {
-      const now = new Date().toISOString();
-      return {
-        id: crypto.randomUUID(),
-        name: stage.name || `Step ${index + 1}`,
-        description: stage.description || '',
-        status: stage.status || 'pending',
-        order: index,
-        startedAt: index === 0 ? now : null,
-        completedAt: stage.status === 'complete' ? now : null,
-        dueDate: stage.estimatedDuration ? 
-          new Date(Date.now() + (stage.estimatedDuration || 7) * 24 * 60 * 60 * 1000).toISOString() : 
-          null,
-        duration: stage.estimatedDuration || 0,
-        emailIds: emails.map((e: any) => e.id),
-      };
-    });
-
-    return {
-      contactId,
-      contactName: contact.name,
-      projectName: pipelineData.projectName || 'Project',
-      projectType: pipelineData.projectType || 'general',
-      stages
-    };
-  } catch (error) {
-    logger.error({ error, contactId, threadId }, "Failed to generate pipeline");
-    throw error;
+    
+    return parsed;
+  } catch (err) {
+    logger.error({ err, raw: text }, "Failed to parse Gemini response as JSON");
+    throw new Error("AI response was not valid JSON");
   }
 }
