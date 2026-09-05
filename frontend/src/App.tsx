@@ -1,5 +1,5 @@
 // frontend/src/App.tsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useUserStore } from "./stores/userStore";
 import { AuthScreen } from "./components/Auth/AuthScreen";
 import { Sidebar } from "./components/Sidebar/Sidebar";
@@ -16,12 +16,52 @@ import { EmailItem } from "./types";
 
 type NavView = "compose" | "inbox" | "contacts" | "templates" | "analytics" | "settings";
 
+// ✅ Composer state stored at App level to persist across tab switches
+interface ComposerState {
+  text: string;
+  recipients: { name: string; email: string | null }[];
+  attachments: any[];
+  result: any;
+  saved: boolean;
+}
+
 function App() {
   const { user } = useUserStore();
   const [activeView, setActiveView] = useState<NavView>("compose");
   const [selectedEmail, setSelectedEmail] = useState<EmailItem | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // ✅ Persist composer state across tab switches
+  const [composerState, setComposerState] = useState<ComposerState>({
+    text: "",
+    recipients: [],
+    attachments: [],
+    result: null,
+    saved: false,
+  });
+
+  // ✅ Reset composer when navigating away from compose
+  const resetComposer = () => {
+    setComposerState({
+      text: "",
+      recipients: [],
+      attachments: [],
+      result: null,
+      saved: false,
+    });
+  };
+
+  // ✅ Handle navigation - clears selected states when switching tabs
+  const handleNavSelect = (view: NavView) => {
+    // Clear selected email/thread when navigating away from inbox
+    if (view !== "inbox") {
+      setSelectedEmail(null);
+      setSelectedThreadId(null);
+    }
+    setActiveView(view);
+    setMobileNavOpen(false);
+  };
 
   if (!user) {
     return (
@@ -33,7 +73,6 @@ function App() {
 
   function handleEmailSelect(email: EmailItem) {
     setSelectedEmail(email);
-    // ✅ Fix: Use threadId or fallback to email.id
     setSelectedThreadId(email.threadId || email.id);
     setActiveView("inbox");
   }
@@ -89,21 +128,43 @@ function App() {
 
     switch (activeView) {
       case "compose":
-        return <Composer onEmailSent={() => {}} />;
+        return (
+          <Composer
+            key="composer"
+            threadId={null}
+            onEmailSent={() => {}}
+            // ✅ Pass composer state and setter
+            externalState={composerState}
+            onStateChange={setComposerState}
+          />
+        );
       case "inbox":
         return <EmailList onSelect={handleEmailSelect} />;
       case "contacts":
         return <ContactManager />;
       case "templates":
-        return <TemplateManager onUse={(prompt) => {
-          setActiveView("compose");
-        }} />;
+        return (
+          <TemplateManager
+            onUse={(prompt) => {
+              setComposerState((prev) => ({ ...prev, text: prompt }));
+              handleNavSelect("compose");
+            }}
+          />
+        );
       case "analytics":
         return <Analytics />;
       case "settings":
         return <Settings />;
       default:
-        return <Composer onEmailSent={() => {}} />;
+        return (
+          <Composer
+            key="composer"
+            threadId={null}
+            onEmailSent={() => {}}
+            externalState={composerState}
+            onStateChange={setComposerState}
+          />
+        );
     }
   }
 
@@ -112,7 +173,7 @@ function App() {
       <div className="flex h-screen bg-bg-light dark:bg-bg-dark text-ink-light dark:text-ink-dark">
         <Sidebar
           active={activeView}
-          onSelect={setActiveView}
+          onSelect={handleNavSelect}
           mobileOpen={mobileNavOpen}
           onMobileClose={() => setMobileNavOpen(false)}
         />

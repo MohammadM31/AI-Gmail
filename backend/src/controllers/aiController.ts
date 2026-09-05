@@ -6,6 +6,7 @@ import { resolveRecipients } from "../services/recipientResolver";
 import { supabase } from "../utils/supabaseClient";
 import { trackEvent } from "../services/analyticsService";
 import { logAudit } from "../services/auditService";
+import { logger } from "../utils/logger"; // ✅ ADDED
 import { 
   ApiError, 
   ValidationError, 
@@ -22,16 +23,13 @@ const processSchema = z.object({
 
 export async function processMessage(req: Request, res: Response, next: NextFunction) {
   try {
-    // Validate input
     const { message } = processSchema.parse(req.body);
     logger.debug({ userId: req.auth!.userId, messageLength: message.length }, "AI request received");
 
-    // Check if AI service is available
     if (!process.env.GEMINI_API_KEY) {
       throw new ServiceUnavailableError("Gemini AI");
     }
 
-    // Fetch user's contacts
     const { data: contacts, error: contactsError } = await supabase
       .from("Contact")
       .select("name")
@@ -44,7 +42,6 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
     const contactNames = (contacts ?? []).map((c) => c.name);
     logger.debug({ contactCount: contactNames.length }, "User contacts fetched");
 
-    // Process with AI
     let result;
     try {
       result = await processMessageWithAI(message, contactNames);
@@ -53,7 +50,6 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
       throw new ServiceUnavailableError("Gemini AI");
     }
 
-    // Log successful processing
     logger.info({ 
       userId: req.auth!.userId,
       recipientCount: result.recipients.length,
@@ -61,10 +57,8 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
       tone: result.tone
     }, "AI processing successful");
 
-    // Track analytics
     await trackEvent(req.auth!.userId, "ai_call");
 
-    // Log audit
     await logAudit({
       userId: req.auth!.userId,
       action: "ai_process",
@@ -73,7 +67,6 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
       req,
     });
 
-    // If no valid recipients, return early with warning
     if (result.recipients.length === 0) {
       return res.json({
         ...result,
@@ -82,13 +75,11 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
       });
     }
 
-    // Resolve recipients (this validates they exist in user's contacts)
     const recipients = await resolveRecipients(req.auth!.userId, result.recipients);
     logger.debug({ resolvedCount: recipients.length }, "Recipients resolved");
 
     res.json({ ...result, recipients });
   } catch (err) {
-    // Let the error handler middleware handle it
     next(err);
   }
 }
@@ -146,7 +137,6 @@ export async function analyzeTopics(req: Request, res: Response, next: NextFunct
   }
 }
 
-// Test endpoint with rate limiting
 export async function testGenerate(req: Request, res: Response, next: NextFunction) {
   try {
     const { message } = z.object({ 

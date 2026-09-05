@@ -3,10 +3,6 @@ import rateLimit, { RateLimitRequestHandler } from "express-rate-limit";
 import { RateLimitError } from "./errorHandler";
 import { Request, Response, NextFunction } from "express";
 
-// Redis store for distributed rate limiting (optional but recommended)
-// import { RedisStore } from "rate-limit-redis";
-// import { createClient } from "redis";
-
 // Base rate limiter configuration
 const createRateLimiter = (
   options: Partial<rateLimit.Options> = {}
@@ -16,14 +12,14 @@ const createRateLimiter = (
     max: 100, // 100 requests per window
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-    keyGenerator: (req) => {
+    keyGenerator: (req: Request) => {
       // Use user ID if available, otherwise IP
       return req.auth?.userId || req.ip || "anonymous";
     },
-    handler: (req, res) => {
+    handler: (req: Request, res: Response) => {
       throw new RateLimitError("Too many requests, please try again later");
     },
-    skip: (req) => {
+    skip: (req: Request) => {
       // Skip rate limiting for health checks
       return req.path === "/health";
     },
@@ -40,7 +36,7 @@ export const apiRateLimiter = createRateLimiter({
 export const authRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // 10 attempts per 15 minutes
-  keyGenerator: (req) => {
+  keyGenerator: (req: Request) => {
     // Use email for auth endpoints
     return (req.body?.email as string) || req.ip || "anonymous";
   },
@@ -49,19 +45,19 @@ export const authRateLimiter = createRateLimiter({
 export const aiRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   max: 20, // 20 AI calls per minute
-  keyGenerator: (req) => req.auth?.userId || req.ip || "anonymous",
+  keyGenerator: (req: Request) => req.auth?.userId || req.ip || "anonymous",
 });
 
 export const emailRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   max: 30, // 30 emails per minute
-  keyGenerator: (req) => req.auth?.userId || req.ip || "anonymous",
+  keyGenerator: (req: Request) => req.auth?.userId || req.ip || "anonymous",
 });
 
 export const uploadRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   max: 10, // 10 uploads per minute
-  keyGenerator: (req) => req.auth?.userId || req.ip || "anonymous",
+  keyGenerator: (req: Request) => req.auth?.userId || req.ip || "anonymous",
 });
 
 // Export rate limit headers middleware

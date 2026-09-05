@@ -44,6 +44,7 @@ export interface EmailItem {
   threadId: string | null;
   sentAt: string | null;
   createdAt: string;
+  pipelineStageId?: string | null; // ✅ ADDED
 }
 
 export interface UserSettingsData {
@@ -81,15 +82,21 @@ export type NavView =
   | "contacts"
   | "templates"
   | "analytics"
-  | "settings";
+  | "settings"
+  | "pipeline"; // ✅ ADDED
 
-// ✅ NEW: Pipeline Types
+// ✅ ENHANCED: Pipeline Types with Timeline Support
 export interface PipelineStage {
   id: string;
   name: string;
   description: string;
   status: 'pending' | 'in-progress' | 'complete';
   order: number;
+  startedAt?: string | null;      // ✅ ADDED
+  completedAt?: string | null;    // ✅ ADDED
+  dueDate?: string | null;        // ✅ ADDED
+  duration?: number;              // ✅ ADDED (in days)
+  emailIds?: string[];            // ✅ ADDED (related emails)
 }
 
 export interface Pipeline {
@@ -99,5 +106,42 @@ export interface Pipeline {
   projectName: string;
   projectType: 'sales' | 'development' | 'event' | 'job' | 'general';
   stages: PipelineStage[];
+  status: 'active' | 'completed' | 'archived'; // ✅ ADDED
+  createdAt: string;
   updatedAt: string;
+  completedAt?: string | null;    // ✅ ADDED
+  totalDuration?: number;         // ✅ ADDED (in days)
+}
+
+// ✅ NEW: Pipeline History
+export interface PipelineHistory {
+  id: string;
+  pipelineId: string;
+  stageId: string;
+  stageName: string;
+  fromStatus: string;
+  toStatus: string;
+  changedAt: string;
+  changedBy: string;
+  note?: string;
+}
+
+// ✅ NEW: Pipeline Metrics
+export interface PipelineMetrics {
+  avgCompletionDays: number;
+  successRate: number;
+  activeCount: number;
+  completedCount: number;
+  totalCount: number;
+  bottleneckStages: {
+    name: string;
+    avgDuration: number;
+    count: number;
+  }[];
+  avgDurationByType: Record<string, number>;
+  monthlyTrends: {
+    month: string;
+    completed: number;
+    started: number;
+  }[];
 }

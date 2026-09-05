@@ -262,3 +262,53 @@ export async function readReceipt(req: Request, res: Response, next: NextFunctio
     next(err);
   }
 }
+
+// backend/src/controllers/emailController.ts
+
+export async function getEmail(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { data, error } = await supabase
+      .from("Email")
+      .select("*")
+      .eq("id", req.params.id)
+      .eq("senderId", req.auth!.userId)
+      .single();
+
+    if (error || !data) throw new ApiError(404, "Email not found");
+    res.json(decryptEmailContent(data));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateEmail(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { data, error } = await supabase
+      .from("Email")
+      .update(req.body)
+      .eq("id", req.params.id)
+      .eq("senderId", req.auth!.userId)
+      .select()
+      .single();
+
+    if (error || !data) throw new ApiError(404, "Email not found");
+    res.json(decryptEmailContent(data));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteEmail(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { error } = await supabase
+      .from("Email")
+      .update({ deletedAt: new Date().toISOString() })
+      .eq("id", req.params.id)
+      .eq("senderId", req.auth!.userId);
+
+    if (error) throw new ApiError(500, error.message);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}

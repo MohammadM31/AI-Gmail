@@ -1,3 +1,4 @@
+// frontend/src/components/Settings/Settings.tsx
 import { useEffect, useState } from "react";
 import { useUserStore } from "../../stores/userStore";
 import * as api from "../../services/apiClient";
@@ -9,6 +10,7 @@ export function Settings() {
 
   const [settings, setSettings] = useState<UserSettingsData | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [loadingSettings, setLoadingSettings] = useState(true);
 
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string | null>(null);
@@ -16,7 +18,13 @@ export function Settings() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    api.getSettings().then(setSettings);
+    // ✅ Load settings with loading state
+    setLoadingSettings(true);
+    api.getSettings()
+      .then(setSettings)
+      .catch(() => {})
+      .finally(() => setLoadingSettings(false));
+
     setLoadingInvite(true);
     api
       .getInviteCode()
@@ -55,6 +63,19 @@ export function Settings() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
+  }
+
+  // ✅ Loading state
+  if (loadingSettings) {
+    return (
+      <div className="space-y-6 max-w-md">
+        <div className="animate-pulse space-y-4">
+          <div className="h-32 bg-gray-300 dark:bg-gray-700 rounded-xl"></div>
+          <div className="h-40 bg-gray-300 dark:bg-gray-700 rounded-xl"></div>
+          <div className="h-32 bg-gray-300 dark:bg-gray-700 rounded-xl"></div>
+        </div>
+      </div>
+    );
   }
 
   return (

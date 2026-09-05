@@ -3,6 +3,7 @@ import { supabase } from "../utils/supabaseClient";
 import { ApiError } from "../middleware/errorHandler";
 import { getUsageSummary } from "../services/analyticsService";
 import { processMessageWithAI } from "../services/geminiService";
+import { decryptEmailContent } from "../services/emailProcessor";
 
 export async function usage(req: Request, res: Response, next: NextFunction) {
   try {
@@ -50,16 +51,13 @@ export async function topics(req: Request, res: Response, next: NextFunction) {
       limit?: string;
     };
 
-    // Build query for emails
     let query = supabase
       .from("Email")
       .select("subject, content, recipients")
       .eq("senderId", req.auth!.userId)
       .eq("status", "sent");
 
-    // Filter by contact
     if (contactId) {
-      // First get the contact name
       const { data: contact, error: contactError } = await supabase
         .from("Contact")
         .select("name")
@@ -71,11 +69,9 @@ export async function topics(req: Request, res: Response, next: NextFunction) {
         throw new ApiError(404, "Contact not found");
       }
 
-      // Filter emails where recipient contains the contact name
       query = query.contains("recipients", [{ name: contact.name }]);
     }
 
-    // Filter by date range
     if (startDate) {
       query = query.gte("createdAt", new Date(startDate).toISOString());
     }
@@ -85,7 +81,6 @@ export async function topics(req: Request, res: Response, next: NextFunction) {
       query = query.lte("createdAt", end.toISOString());
     }
 
-    // Get emails
     const { data: emails, error: emailsError } = await query.order("createdAt", { ascending: false }).limit(50);
 
     if (emailsError) throw new ApiError(500, emailsError.message);
@@ -98,10 +93,12 @@ export async function topics(req: Request, res: Response, next: NextFunction) {
       });
     }
 
-    // Combine subjects and content for analysis
-    const subjects = emails.map((e) => e.subject).join("\n");
+    // ✅ FIX: Decrypt email content before analysis
+    const decryptedEmails = emails.map((e) => decryptEmailContent(e));
 
-    // Use Gemini to identify topics
+    // ✅ Use decrypted content
+    const subjects = decryptedEmails.map((e) => e.subject).join("\n");
+
     const result = await processMessageWithAI(
       `From these email subjects, identify the ${limit} most frequent topics as short bullet points (1-2 words each). 
       Return ONLY the topics, no explanations.
@@ -110,7 +107,6 @@ export async function topics(req: Request, res: Response, next: NextFunction) {
       []
     );
 
-    // Count how many emails relate to each topic
     const topicCounts: Record<string, number> = {};
     for (const topic of result.bulletPoints) {
       const count = emails.filter((e) =>
@@ -119,7 +115,6 @@ export async function topics(req: Request, res: Response, next: NextFunction) {
       topicCounts[topic] = count;
     }
 
-    // Sort topics by count
     const sortedTopics = Object.entries(topicCounts)
       .sort((a, b) => b[1] - a[1])
       .map(([topic, count]) => ({ topic, count }));

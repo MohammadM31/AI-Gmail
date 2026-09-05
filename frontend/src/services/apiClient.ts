@@ -390,3 +390,44 @@ export async function updatePipeline(contactId: string, threadId: string) {
     body: JSON.stringify({ threadId }),
   });
 }
+
+
+export async function resolveRecipientsLocally(
+  userId: string,
+  raw: { name: string; email: string | null }[]
+): Promise<{ name: string; email: string | null; contactId: string | null }[]> {
+  // This is a fallback for when the backend resolver is too strict
+  // It allows email-only recipients to pass through
+  if (!raw || raw.length === 0) return [];
+  
+  // If we can't resolve, just pass through with contactId: null
+  return raw.map((r) => ({
+    name: r.name,
+    email: r.email,
+    contactId: null,
+  }));
+}
+
+
+// ---- Pipeline Enhanced ----
+export async function updatePipelineStage(
+  pipelineId: string,
+  stageId: string,
+  status: string
+) {
+  return request<{
+    success: boolean;
+    stage: PipelineStage;
+  }>(`/api/pipeline/${pipelineId}/stage/${stageId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function getPipelineMetrics() {
+  return request<PipelineMetrics>('/api/pipeline/metrics');
+}
+
+export async function getPipelineHistory(pipelineId: string) {
+  return request<PipelineHistory[]>(`/api/pipeline/${pipelineId}/history`);
+}

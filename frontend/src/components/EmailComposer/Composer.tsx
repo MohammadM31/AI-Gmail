@@ -11,22 +11,42 @@ import type { AiProcessResult, Attachment } from "../../types";
 interface ComposerProps {
   threadId?: string | null;
   onEmailSent?: () => void;
+  externalState?: {
+    text: string;
+    recipients: { name: string; email: string | null }[];
+    attachments: Attachment[];
+    result: AiProcessResult | null;
+    saved: boolean;
+  };
+  onStateChange?: (state: any) => void;
 }
 
-export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
-  const [text, setText] = useState("");
-  const [recipients, setRecipients] = useState<{ name: string; email: string | null }[]>([]);
+export function Composer({ 
+  threadId = null, 
+  onEmailSent,
+  externalState,
+  onStateChange 
+}: ComposerProps) {
+  // ✅ Use external state if provided, otherwise internal
+  const [text, setText] = useState(externalState?.text || "");
+  const [recipients, setRecipients] = useState(externalState?.recipients || []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<AiProcessResult | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [result, setResult] = useState<AiProcessResult | null>(externalState?.result || null);
+  const [saved, setSaved] = useState(externalState?.saved || false);
   const [sending, setSending] = useState(false);
-
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>(externalState?.attachments || []);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasValidRecipients = recipients.length > 0;
+
+  // ✅ Sync external state changes
+  useEffect(() => {
+    if (onStateChange) {
+      onStateChange({ text, recipients, attachments, result, saved });
+    }
+  }, [text, recipients, attachments, result, saved]);
 
   async function handleGenerate() {
     if (!text.trim()) return;
@@ -69,8 +89,6 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
 
   async function handleSaveDraft() {
     if (!result) return;
-    
-    // ✅ Validate
     if (!result.subject?.trim()) {
       setError("Subject is required to save");
       return;
@@ -103,8 +121,6 @@ export function Composer({ threadId = null, onEmailSent }: ComposerProps) {
 
   async function handleSend() {
     if (!result) return;
-    
-    // ✅ Validate
     if (!result.subject?.trim()) {
       setError("Subject is required");
       return;

@@ -1,3 +1,4 @@
+// frontend/src/components/Dashboard/UsageStats.tsx
 import { useEffect, useState } from "react";
 import { getUsage } from "../../services/apiClient";
 
@@ -59,6 +60,16 @@ export function UsageStats({ dateFrom, dateTo }: UsageStatsProps) {
       <p className="text-sm text-highlight">
         {error} <button className="underline" onClick={load}>Retry</button>
       </p>
+    );
+  }
+
+  // ✅ Empty state
+  const hasData = Object.values(counts).some((v) => v > 0);
+  if (!hasData) {
+    return (
+      <div className="text-center text-sm opacity-60 p-4 border border-black/10 dark:border-white/10 rounded-xl">
+        No usage data yet. Start sending emails!
+      </div>
     );
   }
 

@@ -1,3 +1,4 @@
+// backend/src/services/recipientResolver.ts
 import { supabase } from "../utils/supabaseClient";
 
 export interface RawRecipient {
@@ -11,15 +12,10 @@ export interface ResolvedRecipient {
   contactId: string | null;
 }
 
-// Matches AI-extracted recipient names against the user's saved
-// contacts (case-insensitive), falling back to whatever the AI
-// returned when there's no match. Also bumps usage stats for
-// matched contacts so "frequent contacts" suggestions improve.
 export async function resolveRecipients(
   userId: string,
   raw: RawRecipient[]
 ): Promise<ResolvedRecipient[]> {
-  // ✅ If no recipients provided, return empty array
   if (!raw || raw.length === 0) {
     return [];
   }
@@ -31,31 +27,47 @@ export async function resolveRecipients(
 
   if (error) throw error;
 
-  // ✅ Filter out recipients that don't match any contact
+  // ✅ FIX: Allow recipients with valid emails even if not in contacts
   const resolved = raw
     .map((r) => {
+      // Try to find a contact match
       const match = contacts?.find(
         (c) =>
           c.name.toLowerCase() === r.name.toLowerCase() ||
           (r.email && c.email.toLowerCase() === r.email.toLowerCase())
       );
-      return match
-        ? { name: match.name, email: match.email, contactId: match.id }
-        : null; // ✅ No match = excluded
+      
+      if (match) {
+        return { name: match.name, email: match.email, contactId: match.id };
+      }
+      
+      // ✅ If no contact match but has a valid email, still allow it
+      if (r.email && r.email.includes('@') && r.email.includes('.')) {
+        return { name: r.name, email: r.email, contactId: null };
+      }
+      
+      // ✅ If no email but name might be valid, allow it with caution
+      if (r.name && r.name.trim().length > 0) {
+        return { name: r.name, email: null, contactId: null };
+      }
+      
+      return null;
     })
-    .filter((r): r is ResolvedRecipient => r !== null); // ✅ Remove nulls
+    .filter((r): r is ResolvedRecipient => r !== null);
 
-  // ✅ If no valid recipients found, return empty array
   if (resolved.length === 0) {
     return [];
   }
 
-  const matchedIds = resolved.map((r) => r.contactId).filter(Boolean) as string[];
+  // Only increment usage for matched contacts
+  const matchedIds = resolved
+    .map((r) => r.contactId)
+    .filter((id): id is string => id !== null);
+    
   if (matchedIds.length) {
     try {
       await supabase.rpc("increment_contact_usage", { contact_ids: matchedIds });
     } catch (error) {
-      // Optional RPC — fine if it doesn't exist yet; usage counts just won't bump.
       console.log("Contact usage increment skipped (RPC may not exist)");
     }
   }

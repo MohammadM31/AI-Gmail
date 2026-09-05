@@ -1,6 +1,8 @@
 // frontend/src/components/Pipeline/PipelineView.tsx
 import { useEffect, useState } from "react";
 import { getPipeline, generatePipeline, updatePipeline } from "../../services/apiClient";
+import { PipelineTimeline } from "./PipelineTimeline";
+import { PipelineAnalytics } from "./PipelineAnalytics";
 import type { Pipeline, PipelineStage } from "../../types";
 
 interface PipelineViewProps {
@@ -8,6 +10,7 @@ interface PipelineViewProps {
   contactName: string;
   threadId: string | null;
   onClose?: () => void;
+  onEmailSelect?: (threadId: string) => void;
 }
 
 const PROJECT_ICONS: Record<string, string> = {
@@ -18,17 +21,12 @@ const PROJECT_ICONS: Record<string, string> = {
   general: '📋'
 };
 
-const STATUS_EMOJIS = {
-  complete: '✅',
-  'in-progress': '🔄',
-  pending: '⏳'
-};
-
-export function PipelineView({ contactId, contactName, threadId, onClose }: PipelineViewProps) {
+export function PipelineView({ contactId, contactName, threadId, onClose, onEmailSelect }: PipelineViewProps) {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"timeline" | "analytics">("timeline");
 
   useEffect(() => {
     if (contactId) {
@@ -89,23 +87,6 @@ export function PipelineView({ contactId, contactName, threadId, onClose }: Pipe
     }
   }
 
-  function getStatusColor(status: string) {
-    switch (status) {
-      case 'complete':
-        return 'bg-green-500';
-      case 'in-progress':
-        return 'bg-blue-500 animate-pulse';
-      case 'pending':
-        return 'bg-gray-300 dark:bg-gray-600';
-      default:
-        return 'bg-gray-300 dark:bg-gray-600';
-    }
-  }
-
-  function getStatusEmoji(status: string) {
-    return STATUS_EMOJIS[status as keyof typeof STATUS_EMOJIS] || '⏳';
-  }
-
   if (loading) {
     return (
       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4">
@@ -145,13 +126,38 @@ export function PipelineView({ contactId, contactName, threadId, onClose }: Pipe
         )}
       </div>
 
+      {/* Tabs */}
+      {pipeline && (
+        <div className="flex border-b border-black/10 dark:border-white/10 mb-4">
+          <button
+            onClick={() => setActiveTab("timeline")}
+            className={`px-4 py-2 text-sm font-medium transition ${
+              activeTab === "timeline"
+                ? "border-b-2 border-highlight text-highlight"
+                : "opacity-60 hover:opacity-100"
+            }`}
+          >
+            📅 Timeline
+          </button>
+          <button
+            onClick={() => setActiveTab("analytics")}
+            className={`px-4 py-2 text-sm font-medium transition ${
+              activeTab === "analytics"
+                ? "border-b-2 border-highlight text-highlight"
+                : "opacity-60 hover:opacity-100"
+            }`}
+          >
+            📊 Analytics
+          </button>
+        </div>
+      )}
+
       {error && (
         <div className="mb-4 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">
           {error}
         </div>
       )}
 
-      {/* No pipeline state */}
       {!pipeline && (
         <div className="text-center py-6 space-y-3">
           <p className="text-sm opacity-60">
@@ -175,105 +181,41 @@ export function PipelineView({ contactId, contactName, threadId, onClose }: Pipe
         </div>
       )}
 
-      {/* Pipeline visualization */}
+      {pipeline && activeTab === "timeline" && (
+        <PipelineTimeline
+          pipeline={pipeline}
+          onUpdate={loadPipeline}
+          onEmailSelect={onEmailSelect}
+        />
+      )}
+
+      {pipeline && activeTab === "analytics" && (
+        <PipelineAnalytics userId={pipeline.userId || ''} />
+      )}
+
       {pipeline && (
-        <div className="space-y-4">
-          {/* Progress bar */}
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-highlight transition-all duration-500"
-                style={{
-                  width: `${(pipeline.stages.filter(s => s.status === 'complete').length / pipeline.stages.length) * 100}%`
-                }}
-              />
-            </div>
-            <span className="text-xs opacity-60 whitespace-nowrap">
-              {pipeline.stages.filter(s => s.status === 'complete').length}/{pipeline.stages.length}
-            </span>
-          </div>
+        <div className="flex gap-2 pt-4 mt-4 border-t border-black/10 dark:border-white/10">
+          <button
+            onClick={handleUpdate}
+            disabled={generating || !threadId}
+            className="rounded-full border border-black/10 dark:border-white/10 px-3 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-40"
+          >
+            {generating ? "Analyzing..." : "🔄 Update Pipeline"}
+          </button>
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="rounded-full border border-black/10 dark:border-white/10 px-3 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-40"
+          >
+            🔄 Regenerate
+          </button>
+        </div>
+      )}
 
-          {/* Stages - Context Specific */}
-          <div className="space-y-3">
-            {pipeline.stages.map((stage, index) => (
-              <div
-                key={stage.id}
-                className={`flex items-start gap-3 p-3 rounded-lg transition-all ${
-                  stage.status === 'in-progress' 
-                    ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
-                    : stage.status === 'complete'
-                    ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
-                    : 'hover:bg-black/5 dark:hover:bg-white/5'
-                }`}
-              >
-                {/* Status indicator */}
-                <div className="relative flex items-center justify-center mt-0.5">
-                  <div className={`w-4 h-4 rounded-full ${getStatusColor(stage.status)}`}>
-                    <div className="absolute inset-0 flex items-center justify-center text-[10px]">
-                      {getStatusEmoji(stage.status)}
-                    </div>
-                  </div>
-                  {index < pipeline.stages.length - 1 && (
-                    <div className={`absolute top-4 left-1/2 w-0.5 h-6 ${
-                      stage.status === 'complete' 
-                        ? 'bg-green-500' 
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    }`} />
-                  )}
-                </div>
-
-                {/* Stage content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm font-medium ${
-                          stage.status === 'complete' ? 'line-through opacity-60' : ''
-                        }`}>
-                          {stage.name}
-                        </span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                          stage.status === 'complete' 
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                            : stage.status === 'in-progress'
-                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                            : 'bg-gray-100 text-gray-500 dark:bg-gray-800/30 dark:text-gray-400'
-                        }`}>
-                          {stage.status}
-                        </span>
-                      </div>
-                      {stage.description && (
-                        <p className="text-xs opacity-60 mt-0.5">{stage.description}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-2 pt-3 border-t border-black/10 dark:border-white/10">
-            <button
-              onClick={handleUpdate}
-              disabled={generating || !threadId}
-              className="rounded-full border border-black/10 dark:border-white/10 px-3 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-40"
-            >
-              {generating ? "Analyzing..." : "🔄 Update Status"}
-            </button>
-            <button
-              onClick={handleGenerate}
-              disabled={generating}
-              className="rounded-full border border-black/10 dark:border-white/10 px-3 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-40"
-            >
-              🔄 Regenerate
-            </button>
-          </div>
-
-          {/* Context note */}
-          <div className="text-[10px] opacity-40 text-center border-t border-black/10 dark:border-white/10 pt-2">
-            AI analyzed {pipeline.stages.length} stages from your conversation
-          </div>
+      {/* Context note */}
+      {pipeline && (
+        <div className="text-[10px] opacity-40 text-center border-t border-black/10 dark:border-white/10 pt-2 mt-4">
+          AI analyzed {pipeline.stages.length} stages from your conversation
         </div>
       )}
     </div>

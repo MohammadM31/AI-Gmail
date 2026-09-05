@@ -1,5 +1,5 @@
 // frontend/src/components/Templates/TemplateManager.tsx
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useState, FormEvent, useMemo } from "react";
 import type { Template, Contact } from "../../types";
 import { listTemplates, createTemplate, deleteTemplate, listContacts, sendTemplateNow } from "../../services/apiClient";
 
@@ -14,6 +14,7 @@ export function TemplateManager({ onUse }: { onUse: (prompt: string) => void }) 
   const [autoSend, setAutoSend] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState<Record<string, boolean>>({});
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     loadTemplates();
@@ -38,11 +39,21 @@ export function TemplateManager({ onUse }: { onUse: (prompt: string) => void }) 
     }
   }
 
+  // ✅ Filter templates by search query
+  const filteredTemplates = useMemo(() => {
+    if (!searchQuery.trim()) return templates;
+    const query = searchQuery.toLowerCase();
+    return templates.filter(t =>
+      t.name.toLowerCase().includes(query) ||
+      t.prompt.toLowerCase().includes(query) ||
+      (t.description && t.description.toLowerCase().includes(query))
+    );
+  }, [templates, searchQuery]);
+
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
     if (!name.trim() || !prompt.trim()) return;
     
-    // ✅ Validate schedule date
     if (scheduleDate) {
       const selectedDate = new Date(scheduleDate);
       if (selectedDate < new Date()) {
@@ -102,6 +113,16 @@ export function TemplateManager({ onUse }: { onUse: (prompt: string) => void }) 
 
   return (
     <div className="space-y-4">
+      {/* ✅ Search input */}
+      <div className="flex gap-2">
+        <input
+          className="flex-1 rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none"
+          placeholder="Search templates..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+
       <form onSubmit={handleAdd} className="space-y-2 rounded-xl border border-black/10 dark:border-white/10 p-4 bg-surface-light dark:bg-surface-dark">
         <input
           className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none"
@@ -143,7 +164,7 @@ export function TemplateManager({ onUse }: { onUse: (prompt: string) => void }) 
             className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none"
             value={scheduleDate}
             onChange={(e) => setScheduleDate(e.target.value)}
-            min={new Date().toISOString().slice(0, 16)} // ✅ Prevent past dates
+            min={new Date().toISOString().slice(0, 16)}
           />
         </div>
 
@@ -171,8 +192,14 @@ export function TemplateManager({ onUse }: { onUse: (prompt: string) => void }) 
         </button>
       </form>
 
+      {!loading && filteredTemplates.length === 0 && (
+        <p className="text-sm opacity-60">
+          {searchQuery ? "No templates match your search." : "No templates yet. Create one above!"}
+        </p>
+      )}
+
       <ul className="grid gap-3 sm:grid-cols-2">
-        {templates.map((t) => (
+        {filteredTemplates.map((t) => (
           <li
             key={t.id}
             className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4 space-y-2"

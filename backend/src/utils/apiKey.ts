@@ -2,7 +2,7 @@
 import crypto from "crypto";
 import { supabase } from "./supabaseClient";
 import { logger } from "./logger";
-import { config } from "../config/env";
+import { Request, Response, NextFunction } from "express"; // ✅ ADDED
 
 interface ApiKeyData {
   id: string;
@@ -15,17 +15,14 @@ interface ApiKeyData {
   isActive: boolean;
 }
 
-// Generate a new API key
 export function generateApiKey(): string {
   return `ak_${crypto.randomBytes(32).toString("hex")}`;
 }
 
-// Hash API key for storage (never store plain text)
 export function hashApiKey(key: string): string {
   return crypto.createHash("sha256").update(key).digest("hex");
 }
 
-// Create a new API key for a user
 export async function createApiKey(
   userId: string,
   name: string,
@@ -61,7 +58,6 @@ export async function createApiKey(
   return { plainKey, keyId };
 }
 
-// Validate an API key
 export async function validateApiKey(key: string): Promise<{ userId: string } | null> {
   const hashedKey = hashApiKey(key);
   
@@ -76,12 +72,10 @@ export async function validateApiKey(key: string): Promise<{ userId: string } | 
     return null;
   }
   
-  // Check expiration
   if (data.expiresAt && new Date(data.expiresAt) < new Date()) {
     return null;
   }
   
-  // Update last used
   await supabase
     .from("ApiKeys")
     .update({ lastUsed: new Date().toISOString() })
@@ -90,7 +84,6 @@ export async function validateApiKey(key: string): Promise<{ userId: string } | 
   return { userId: data.userId };
 }
 
-// Revoke an API key
 export async function revokeApiKey(keyId: string, userId: string): Promise<boolean> {
   const { data, error } = await supabase
     .from("ApiKeys")
@@ -108,7 +101,6 @@ export async function revokeApiKey(keyId: string, userId: string): Promise<boole
   return true;
 }
 
-// List API keys for a user
 export async function listApiKeys(userId: string): Promise<ApiKeyData[]> {
   const { data, error } = await supabase
     .from("ApiKeys")
@@ -124,7 +116,7 @@ export async function listApiKeys(userId: string): Promise<ApiKeyData[]> {
   return data.map((item: any) => ({
     id: item.id,
     userId: item.userId,
-    key: "hidden", // Never return the actual key
+    key: "hidden",
     name: item.name,
     lastUsed: item.lastUsed ? new Date(item.lastUsed) : undefined,
     expiresAt: item.expiresAt ? new Date(item.expiresAt) : undefined,
@@ -133,7 +125,6 @@ export async function listApiKeys(userId: string): Promise<ApiKeyData[]> {
   }));
 }
 
-// Rotate an API key (create new, revoke old)
 export async function rotateApiKey(
   oldKeyId: string,
   userId: string,
@@ -154,21 +145,18 @@ export async function rotateApiKey(
   return newKey;
 }
 
-// Middleware for API key authentication
+// ✅ FIXED: Proper middleware with correct types
 export async function apiKeyAuth(req: Request, res: Response, next: NextFunction) {
   const apiKey = req.headers["x-api-key"] as string;
   
   if (!apiKey) {
-    // Try to get from query string
     const queryKey = req.query.api_key as string;
     if (!queryKey) {
-      // Not an API request, continue
       return next();
     }
-    // Validate using query parameter (less secure, use with caution)
     const result = await validateApiKey(queryKey);
     if (result) {
-      req.auth = { userId: result.userId, organizationId: "api-user" };
+      (req as any).auth = { userId: result.userId, organizationId: "api-user" };
       return next();
     }
     return next(new Error("Invalid API key"));
@@ -179,6 +167,6 @@ export async function apiKeyAuth(req: Request, res: Response, next: NextFunction
     return next(new Error("Invalid or expired API key"));
   }
   
-  req.auth = { userId: result.userId, organizationId: "api-user" };
+  (req as any).auth = { userId: result.userId, organizationId: "api-user" };
   next();
 }

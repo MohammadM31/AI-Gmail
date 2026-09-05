@@ -30,7 +30,6 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
       const contactData = await getContact(contactId);
       setContact(contactData);
 
-      // Try to load summary and threads, but don't fail if they 404
       try {
         const summaryData = await getContactSummary(contactId);
         setSummary(summaryData.summary);
@@ -78,7 +77,6 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
     }
   }
 
-  // Get the first thread ID for Pipeline
   const firstThreadId = threads.length > 0 ? threads[0]?.threadId : null;
 
   if (loading) {
@@ -229,6 +227,7 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
           contactName={contact.name}
           threadId={firstThreadId}
           onClose={() => {}}
+          onEmailSelect={onEmailSelect}
         />
       )}
     </div>

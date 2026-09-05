@@ -25,21 +25,22 @@ app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
     crossOriginOpenerPolicy: { policy: "unsafe-none" },
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: ["'self'", process.env.SUPABASE_URL, "https://api.gemini.google.com"],
-        fontSrc: ["'self'", "data:"],
-        objectSrc: ["'none'"],
-        frameSrc: ["'none'"],
-        baseUri: ["'self'"],
-        formAction: ["'self'"],
-        upgradeInsecureRequests: [],
-      },
-    },
+    
+contentSecurityPolicy: {
+  directives: {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", "'unsafe-inline'"],
+    styleSrc: ["'self'", "'unsafe-inline'"],
+    imgSrc: ["'self'", "data:", "https:"],
+    connectSrc: ["'self'", process.env.SUPABASE_URL || "", "https://api.gemini.google.com"].filter(Boolean),
+    fontSrc: ["'self'", "data:"],
+    objectSrc: ["'none'"],
+    frameSrc: ["'none'"],
+    baseUri: ["'self'"],
+    formAction: ["'self'"],
+    upgradeInsecureRequests: [],
+  },
+},
     hsts: {
       maxAge: 31536000,
       includeSubDomains: true,
