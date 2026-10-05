@@ -1,4 +1,3 @@
-// backend/src/services/geminiService.ts
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { logger } from "../utils/logger";
 
@@ -21,8 +20,13 @@ const genAI = process.env.GEMINI_API_KEY
 
 const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
-function buildPrompt(input: string, contacts: string[], contentLength: number): string {
+function buildPrompt(
+  input: string,
+  contacts: string[],
+  contentLength: number
+): string {
   let bulletGuidance: string;
+
   if (contentLength > 300) {
     bulletGuidance = "8 to 12 concise bullet points covering all key information";
   } else if (contentLength > 150) {
@@ -31,17 +35,17 @@ function buildPrompt(input: string, contacts: string[], contentLength: number): 
     bulletGuidance = "2 to 4 concise bullet points summarizing the key message";
   }
 
-  const contactList = contacts.length > 0 
-    ? `The user has the following contacts: ${contacts.join(', ')}.` 
-    : 'The user has no contacts saved yet.';
+  const contactList =
+    contacts.length > 0
+      ? `The user has the following contacts: ${contacts.join(", ")}.`
+      : "The user has no contacts saved yet.";
 
   return `
 You are an assistant that converts a rough email brief into structured data.
 
 ${contactList}
-CRITICAL: Only extract recipient names that exactly match or closely match names in this contact list. If a name in the text doesn't match any contact, DO NOT include it in the recipients array. If no valid recipients are found, return an empty recipients array.
 
-Return ONLY valid JSON (no markdown fences) matching exactly this shape:
+Return ONLY valid JSON:
 
 {
   "recipients": [{"name": string, "email": string | null}],
@@ -56,12 +60,12 @@ Return ONLY valid JSON (no markdown fences) matching exactly this shape:
   "tone": "professional" | "casual" | "urgent"
 }
 
-Message to process:
+Message:
+
 """${input}"""
 `;
 }
 
-// ✅ EXPORTED - no self-import here
 export async function processMessageWithAI(
   input: string,
   contacts: string[] = []
@@ -72,32 +76,87 @@ export async function processMessageWithAI(
     );
   }
 
-  const contentLength = input.length;
-  const prompt = buildPrompt(input, contacts, contentLength);
+  const prompt = buildPrompt(input, contacts, input.length);
 
-  const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+  const model = genAI.getGenerativeModel({
+    model: MODEL_NAME,
+  });
+
   const result = await model.generateContent(prompt);
+
   const text = result.response.text().trim();
 
-  const cleaned = text.replace(/^```json\s*|```$/g, "").trim();
+  const cleaned = text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
 
   try {
     const parsed = JSON.parse(cleaned) as AiProcessResult;
-    
+
     if (contacts.length > 0 && parsed.recipients.length > 0) {
-      const validRecipients = parsed.recipients.filter((r) =>
-        contacts.some((c) => c.toLowerCase() === r.name.toLowerCase())
+      parsed.recipients = parsed.recipients.filter((r) =>
+        contacts.some(
+          (c) => c.toLowerCase() === r.name.toLowerCase()
+        )
       );
-      if (validRecipients.length === 0) {
-        parsed.recipients = [];
-      } else {
-        parsed.recipients = validRecipients;
-      }
     }
-    
+
     return parsed;
   } catch (err) {
-    logger.error({ err, raw: text }, "Failed to parse Gemini response as JSON");
+    logger.error(
+      {
+        err,
+        raw: text,
+      },
+      "Failed to parse Gemini response as JSON"
+    );
+
+    throw new Error("AI response was not valid JSON");
+  }
+}
+
+export async function generateStructuredAI<T>(
+  prompt: string
+): Promise<T> {
+  if (!genAI) {
+    throw new Error(
+      "GEMINI_API_KEY is not configured on the backend."
+    );
+  }
+
+  const model = genAI.getGenerativeModel({
+    model: MODEL_NAME,
+  });
+
+  const result = await model.generateContent(`
+You are a software requirements analysis assistant.
+
+Return ONLY valid JSON.
+
+${prompt}
+`);
+
+  const text = result.response.text().trim();
+
+  const cleaned = text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch (err) {
+    logger.error(
+      {
+        err,
+        raw: text,
+      },
+      "Failed to parse structured Gemini response"
+    );
+
     throw new Error("AI response was not valid JSON");
   }
 }
