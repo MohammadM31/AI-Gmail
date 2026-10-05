@@ -20,6 +20,14 @@ const genAI = process.env.GEMINI_API_KEY
 
 const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
+function cleanJsonResponse(text: string): string {
+  return text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
 function buildPrompt(
   input: string,
   contacts: string[],
@@ -28,11 +36,14 @@ function buildPrompt(
   let bulletGuidance: string;
 
   if (contentLength > 300) {
-    bulletGuidance = "8 to 12 concise bullet points covering all key information";
+    bulletGuidance =
+      "8 to 12 concise bullet points covering all key information";
   } else if (contentLength > 150) {
-    bulletGuidance = "5 to 8 concise bullet points covering the main points";
+    bulletGuidance =
+      "5 to 8 concise bullet points covering the main points";
   } else {
-    bulletGuidance = "2 to 4 concise bullet points summarizing the key message";
+    bulletGuidance =
+      "2 to 4 concise bullet points summarizing the key message";
   }
 
   const contactList =
@@ -45,19 +56,28 @@ You are an assistant that converts a rough email brief into structured data.
 
 ${contactList}
 
-Return ONLY valid JSON:
+Return ONLY valid JSON.
+
+The bulletPoints field should contain ${bulletGuidance}.
+
+Expected JSON:
 
 {
-  "recipients": [{"name": string, "email": string | null}],
-  "subject": string,
-  "bulletPoints": string[],
+  "recipients": [
+    {
+      "name": "string",
+      "email": "string or null"
+    }
+  ],
+  "subject": "string",
+  "bulletPoints": ["string"],
   "chart": {
-    "type": "bar" | "line" | "pie" | "doughnut" | "radar" | "polarArea" | "scatter" | "bubble",
-    "title": string,
-    "labels": string[],
-    "values": number[]
-  } | null,
-  "tone": "professional" | "casual" | "urgent"
+    "type": "bar | line | pie | doughnut | radar | polarArea | scatter | bubble",
+    "title": "string",
+    "labels": ["string"],
+    "values": [0]
+  },
+  "tone": "professional | casual | urgent"
 }
 
 Message:
@@ -85,20 +105,24 @@ export async function processMessageWithAI(
   const result = await model.generateContent(prompt);
 
   const text = result.response.text().trim();
-
-  const cleaned = text
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
+  const cleaned = cleanJsonResponse(text);
 
   try {
     const parsed = JSON.parse(cleaned) as AiProcessResult;
 
+    if (!Array.isArray(parsed.recipients)) {
+      parsed.recipients = [];
+    }
+
+    if (!Array.isArray(parsed.bulletPoints)) {
+      parsed.bulletPoints = [];
+    }
+
     if (contacts.length > 0 && parsed.recipients.length > 0) {
-      parsed.recipients = parsed.recipients.filter((r) =>
+      parsed.recipients = parsed.recipients.filter((recipient) =>
         contacts.some(
-          (c) => c.toLowerCase() === r.name.toLowerCase()
+          (contact) =>
+            contact.toLowerCase() === recipient.name.toLowerCase()
         )
       );
     }
@@ -117,12 +141,18 @@ export async function processMessageWithAI(
   }
 }
 
+/**
+ * Generic structured AI helper.
+ *
+ * This is used by the requirements system because requirements
+ * analysis needs a different JSON structure than email generation.
+ */
 export async function generateStructuredAI<T>(
   prompt: string
 ): Promise<T> {
   if (!genAI) {
     throw new Error(
-      "GEMINI_API_KEY is not configured on the backend."
+      "GEMINI_API_KEY is not configured on the backend. Set it in backend/.env."
     );
   }
 
@@ -135,16 +165,14 @@ You are a software requirements analysis assistant.
 
 Return ONLY valid JSON.
 
+Do not wrap the response in Markdown.
+Do not include explanations before or after the JSON.
+
 ${prompt}
 `);
 
   const text = result.response.text().trim();
-
-  const cleaned = text
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
+  const cleaned = cleanJsonResponse(text);
 
   try {
     return JSON.parse(cleaned) as T;
