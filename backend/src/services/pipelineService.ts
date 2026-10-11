@@ -1,14 +1,15 @@
 // backend/src/services/pipelineService.ts
 import crypto from "crypto";
 import { supabase } from "../utils/supabaseClient";
-import { processMessageWithAI } from "./geminiService";
+import { generateStructuredAI } from "./geminiService";
+import { getDecryptedThreadEmails } from "./emailProcessor";
 import { logger } from "../utils/logger";
 
 export interface PipelineStage {
   id: string;
   name: string;
   description: string;
-  status: 'pending' | 'in-progress' | 'complete';
+  status: "pending" | "in-progress" | "complete";
   order: number;
   startedAt?: string | null;
   completedAt?: string | null;
@@ -27,8 +28,32 @@ export interface ProjectPipeline {
   contactId: string;
   contactName: string;
   projectName: string;
-  projectType: 'sales' | 'development' | 'event' | 'job' | 'general';
+  projectType: "sales" | "development" | "event" | "job" | "general";
   stages: PipelineStage[];
+}
+
+/**
+ * Shape Gemini returns when we ask it to extract a pipeline.
+ * Using a typed wrapper lets `generateStructuredAI` parse safely.
+ */
+interface PipelineAIResult {
+  projectName: string;
+  projectType: "sales" | "development" | "event" | "job" | "general";
+  stages: {
+    name: string;
+    description: string;
+    status: "pending" | "in-progress" | "complete";
+    estimatedDuration: number;
+  }[];
+}
+
+interface TemplateAIResult {
+  name: string;
+  stages: {
+    name: string;
+    description: string;
+    estimatedDuration: number;
+  }[];
 }
 
 export async function generatePipelineFromThread(
@@ -37,13 +62,9 @@ export async function generatePipelineFromThread(
   threadId: string
 ): Promise<ProjectPipeline> {
   try {
-    const { data: emails, error } = await supabase
-      .from("Email")
-      .select("content, subject, recipients, createdAt, senderId, id")
-      .eq("threadId", threadId)
-      .order("createdAt", { ascending: true });
+    // ✅ Decrypt content before feeding to AI
+    const emails = await getDecryptedThreadEmails(threadId);
 
-    if (error) throw new Error(`Failed to fetch emails: ${error.message}`);
     if (!emails || emails.length === 0) {
       throw new Error("No emails found in this thread");
     }
@@ -60,69 +81,59 @@ export async function generatePipelineFromThread(
     }
 
     const conversation = emails
-      .map((e) => `From: ${e.senderId === userId ? 'You' : contact.name}\nSubject: ${e.subject}\nContent: ${e.content}`)
+      .map(
+        (e) =>
+          `From: ${e.senderId === userId ? "You" : contact.name}\nSubject: ${e.subject}\nContent: ${e.content}`
+      )
       .join("\n---\n");
 
-    const result = await processMessageWithAI(
+    // ✅ Use generateStructuredAI — the prompt asks for a pipeline-shaped
+    // JSON object, not an email-shaped one.
+    const pipelineData = await generateStructuredAI<PipelineAIResult>(
       `You are an AI that analyzes email conversations and extracts the workflow or process being discussed.
 
-      Analyze this email conversation between the user and ${contact.name}:
+Analyze this email conversation between the user and ${contact.name}:
 
-      ${conversation}
+${conversation}
 
-      Based on the conversation, identify:
-      1. What is the main topic, project, or goal being discussed? 
-      2. What are the actual steps or milestones in this process?
-      3. What is the current status of each step?
-      4. Estimate reasonable durations for each stage in days.
+Based on the conversation, identify:
+1. What is the main topic, project, or goal being discussed?
+2. What are the actual steps or milestones in this process?
+3. What is the current status of each step?
+4. Estimate reasonable durations for each stage in days.
 
-      Return a JSON object with:
-      {
-        "projectName": "string",
-        "projectType": "sales | development | event | job | general",
-        "stages": [
-          {
-            "name": "string",
-            "description": "string",
-            "status": "pending | in-progress | complete",
-            "estimatedDuration": number (in days)
-          }
-        ]
-      }
-
-      Only return valid JSON, no other text.`,
-      []
+Return a JSON object with:
+{
+  "projectName": "string",
+  "projectType": "sales | development | event | job | general",
+  "stages": [
+    {
+      "name": "string",
+      "description": "string",
+      "status": "pending | in-progress | complete",
+      "estimatedDuration": number
+    }
+  ]
+}`
     );
 
-    let pipelineData;
-    try {
-      const cleanedText = result.bulletPoints.join(' ').replace(/```json/g, '').replace(/```/g, '').trim();
-      pipelineData = JSON.parse(cleanedText);
-    } catch (parseError) {
-      const rawText = JSON.stringify(result);
-      const match = rawText.match(/\{[^]*\}/);
-      if (match) {
-        pipelineData = JSON.parse(match[0]);
-      } else {
-        throw new Error("Failed to parse AI response");
-      }
-    }
-
-    const stages = pipelineData.stages.map((stage: any, index: number) => {
+    const stages = pipelineData.stages.map((stage, index) => {
       const now = new Date().toISOString();
       return {
         id: crypto.randomUUID(),
         name: stage.name || `Step ${index + 1}`,
-        description: stage.description || '',
-        status: stage.status || 'pending',
+        description: stage.description || "",
+        status: stage.status || "pending",
         order: index,
         startedAt: index === 0 ? now : null,
-        completedAt: stage.status === 'complete' ? now : null,
-        dueDate: stage.estimatedDuration ? 
-          new Date(Date.now() + (stage.estimatedDuration || 7) * 24 * 60 * 60 * 1000).toISOString() : 
-          null,
+        completedAt: stage.status === "complete" ? now : null,
+        dueDate: stage.estimatedDuration
+          ? new Date(
+              Date.now() + (stage.estimatedDuration || 7) * 24 * 60 * 60 * 1000
+            ).toISOString()
+          : null,
         duration: stage.estimatedDuration || 0,
-        emailIds: emails.map((e: any) => e.id),
+        emailIds: emails.map((e) => e.id),
         timeSpent: 0,
         timeEntries: [],
       };
@@ -131,9 +142,9 @@ export async function generatePipelineFromThread(
     return {
       contactId,
       contactName: contact.name,
-      projectName: pipelineData.projectName || 'Project',
-      projectType: pipelineData.projectType || 'general',
-      stages
+      projectName: pipelineData.projectName || "Project",
+      projectType: pipelineData.projectType || "general",
+      stages,
     };
   } catch (error) {
     logger.error({ error, contactId, threadId }, "Failed to generate pipeline");
@@ -144,7 +155,7 @@ export async function generatePipelineFromThread(
 export async function updateStageTime(
   pipelineId: string,
   stageId: string,
-  action: 'start' | 'stop' | 'add',
+  action: "start" | "stop" | "add",
   note?: string
 ) {
   const { data: pipeline, error } = await supabase
@@ -158,22 +169,24 @@ export async function updateStageTime(
   const stages = pipeline.stages.map((stage: any) => {
     if (stage.id === stageId) {
       const now = new Date().toISOString();
-      
-      if (action === 'start') {
+
+      if (action === "start") {
         return {
           ...stage,
           timeEntries: [...(stage.timeEntries || []), { start: now, note }],
         };
       }
-      
-      if (action === 'stop') {
+
+      if (action === "stop") {
         const entries = stage.timeEntries || [];
         const lastEntry = entries[entries.length - 1];
         if (lastEntry && !lastEntry.end) {
           lastEntry.end = now;
           const start = new Date(lastEntry.start);
           const end = new Date(now);
-          const timeSpent = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
+          const timeSpent = Math.round(
+            (end.getTime() - start.getTime()) / (1000 * 60)
+          );
           return {
             ...stage,
             timeEntries: entries,
@@ -181,32 +194,37 @@ export async function updateStageTime(
           };
         }
       }
-      
-      if (action === 'add') {
+
+      if (action === "add") {
         return {
           ...stage,
-          timeEntries: [...(stage.timeEntries || []), { start: now, end: now, note }],
+          timeEntries: [
+            ...(stage.timeEntries || []),
+            { start: now, end: now, note },
+          ],
         };
       }
     }
     return stage;
   });
 
-  await supabase
-    .from("Pipeline")
-    .update({ stages })
-    .eq("id", pipelineId);
+  await supabase.from("Pipeline").update({ stages }).eq("id", pipelineId);
 
   return stages;
 }
 
 export async function suggestPipelineTemplate(conversation: string) {
-  const result = await processMessageWithAI(
-    `Based on this conversation, suggest a pipeline template:
-    ${conversation}
-    Return template name, stages, and estimated durations in days.
-    Format as JSON with: { "name": string, "stages": [{ "name": string, "description": string, "estimatedDuration": number }] }`,
-    []
+  return generateStructuredAI<TemplateAIResult>(
+    `Based on this conversation, suggest a pipeline template.
+
+${conversation}
+
+Return JSON:
+{
+  "name": "string",
+  "stages": [
+    { "name": "string", "description": "string", "estimatedDuration": number }
+  ]
+}`
   );
-  return result;
 }

@@ -816,6 +816,30 @@ export async function exportAnalytics(
 // PIPELINE
 // ============================================================
 
+export async function getPipelineMetrics() {
+  return request<PipelineMetrics>(
+    "/api/pipeline/metrics"
+  );
+}
+
+export async function updatePipelineStage(
+  pipelineId: string,
+  stageId: string,
+  status: string
+) {
+  return request<{
+    success: boolean;
+    stage: PipelineStage;
+  }>(
+    `/api/pipeline/${pipelineId}/stage/${stageId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    }
+  );
+}
+
+
 export async function getPipeline(
   contactId: string
 ) {

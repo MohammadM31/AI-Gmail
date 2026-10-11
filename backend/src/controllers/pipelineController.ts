@@ -1,7 +1,11 @@
 import { Request, Response, NextFunction } from "express";
 import { supabase } from "../utils/supabaseClient";
 import { ApiError } from "../middleware/errorHandler";
-import { generatePipelineFromThread, updateStageTime, suggestPipelineTemplate } from "../services/pipelineService";
+import {
+  generatePipelineFromThread,
+  updateStageTime,
+  suggestPipelineTemplate as suggestPipelineTemplateService,
+} from "../services/pipelineService";
 
 export async function getPipeline(req: Request, res: Response, next: NextFunction) {
   try {
@@ -21,7 +25,7 @@ export async function getPipeline(req: Request, res: Response, next: NextFunctio
 
     let totalDuration = 0;
     if (data.stages && data.stages.length > 0) {
-      const completedStages = data.stages.filter((s: any) => s.status === 'complete');
+      const completedStages = data.stages.filter((s: any) => s.status === "complete");
       if (completedStages.length > 0) {
         totalDuration = completedStages.reduce((sum: number, s: any) => {
           if (s.startedAt && s.completedAt) {
@@ -40,7 +44,7 @@ export async function getPipeline(req: Request, res: Response, next: NextFunctio
         ...data,
         userId,
         totalDuration,
-      }
+      },
     });
   } catch (err) {
     next(err);
@@ -59,7 +63,6 @@ export async function generatePipeline(req: Request, res: Response, next: NextFu
 
     const pipeline = await generatePipelineFromThread(userId, contactId, threadId);
 
-    // ✅ Add dates to stages
     const now = new Date().toISOString();
     const stagesWithDates = pipeline.stages.map((stage, index) => ({
       ...stage,
@@ -72,17 +75,20 @@ export async function generatePipeline(req: Request, res: Response, next: NextFu
 
     const { data, error } = await supabase
       .from("Pipeline")
-      .upsert({
-        userId,
-        contactId,
-        contactName: pipeline.contactName,
-        projectName: pipeline.projectName,
-        projectType: pipeline.projectType,
-        stages: stagesWithDates,
-        status: 'active',
-        updatedAt: now,
-        createdAt: now,
-      })
+      .upsert(
+        {
+          userId,
+          contactId,
+          contactName: pipeline.contactName,
+          projectName: pipeline.projectName,
+          projectType: pipeline.projectType,
+          stages: stagesWithDates,
+          status: "active",
+          updatedAt: now,
+          createdAt: now,
+        },
+        { onConflict: "userId,contactId" }
+      )
       .select()
       .single();
 
@@ -108,7 +114,6 @@ export async function updatePipeline(req: Request, res: Response, next: NextFunc
 
     const pipeline = await generatePipelineFromThread(userId, contactId, threadId);
 
-    // ✅ Preserve existing dates
     const { data: existing } = await supabase
       .from("Pipeline")
       .select("stages")
@@ -120,14 +125,14 @@ export async function updatePipeline(req: Request, res: Response, next: NextFunc
     const now = new Date().toISOString();
 
     const updatedStages = pipeline.stages.map((stage, index) => {
-      const existing = existingStages.find((s: any) => s.name === stage.name);
+      const match = existingStages.find((s: any) => s.name === stage.name);
       return {
         ...stage,
-        startedAt: existing?.startedAt || (index === 0 ? now : null),
-        completedAt: existing?.completedAt || null,
-        dueDate: existing?.dueDate || null,
-        duration: existing?.duration || 0,
-        emailIds: existing?.emailIds || [],
+        startedAt: match?.startedAt || (index === 0 ? now : null),
+        completedAt: match?.completedAt || null,
+        dueDate: match?.dueDate || null,
+        duration: match?.duration || 0,
+        emailIds: match?.emailIds || [],
       };
     });
 
@@ -154,7 +159,6 @@ export async function updatePipeline(req: Request, res: Response, next: NextFunc
   }
 }
 
-// ✅ NEW: Update individual stage
 export async function updatePipelineStage(req: Request, res: Response, next: NextFunction) {
   try {
     const { pipelineId, stageId } = req.params;
@@ -172,14 +176,16 @@ export async function updatePipelineStage(req: Request, res: Response, next: Nex
       throw new ApiError(404, "Pipeline not found");
     }
 
-    const stages = pipeline.stages.map((stage: any) => {
+    const stagesArray: any[] = Array.isArray(pipeline.stages) ? pipeline.stages : [];
+
+    const stages = stagesArray.map((stage: any) => {
       if (stage.id === stageId) {
         const now = new Date().toISOString();
         return {
           ...stage,
           status,
-          completedAt: status === 'complete' ? now : stage.completedAt,
-          startedAt: status === 'in-progress' && !stage.startedAt ? now : stage.startedAt,
+          completedAt: status === "complete" ? now : stage.completedAt,
+          startedAt: status === "in-progress" && !stage.startedAt ? now : stage.startedAt,
         };
       }
       return stage;
@@ -197,13 +203,15 @@ export async function updatePipelineStage(req: Request, res: Response, next: Nex
       throw new ApiError(500, error.message);
     }
 
-    res.json({ success: true, stage: data.stages.find((s: any) => s.id === stageId) });
+    res.json({
+      success: true,
+      stage: data.stages.find((s: any) => s.id === stageId),
+    });
   } catch (err) {
     next(err);
   }
 }
 
-// ✅ NEW: Get pipeline metrics
 export async function getPipelineMetrics(req: Request, res: Response, next: NextFunction) {
   try {
     const userId = req.auth!.userId;
@@ -217,34 +225,35 @@ export async function getPipelineMetrics(req: Request, res: Response, next: Next
       throw new ApiError(500, error.message);
     }
 
-    const active = pipelines.filter((p: any) => p.status === 'active');
-    const completed = pipelines.filter((p: any) => p.status === 'completed');
-    const total = pipelines.length;
+    const safePipelines = pipelines ?? [];
 
-    // Calculate average completion time
+    const active = safePipelines.filter((p: any) => p.status === "active");
+    const completed = safePipelines.filter((p: any) => p.status === "completed");
+    const total = safePipelines.length;
+
     let totalDuration = 0;
     let completedCount = 0;
     const bottleneckStages: Record<string, { total: number; count: number }> = {};
     const durationByType: Record<string, { total: number; count: number }> = {};
     const monthlyTrends: Record<string, { completed: number; started: number }> = {};
 
-    for (const pipeline of pipelines) {
-      // Duration by type
+    for (const pipeline of safePipelines) {
       if (!durationByType[pipeline.projectType]) {
         durationByType[pipeline.projectType] = { total: 0, count: 0 };
       }
 
-      const completedStages = pipeline.stages.filter((s: any) => s.status === 'complete');
+      const stagesArray: any[] = Array.isArray(pipeline.stages) ? pipeline.stages : [];
       let pipelineDuration = 0;
 
-      for (const stage of pipeline.stages) {
+      for (const stage of stagesArray) {
         if (stage.startedAt && stage.completedAt) {
           const start = new Date(stage.startedAt);
           const end = new Date(stage.completedAt);
-          const duration = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+          const duration = Math.round(
+            (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+          );
           pipelineDuration += duration;
 
-          // Track bottleneck
           if (!bottleneckStages[stage.name]) {
             bottleneckStages[stage.name] = { total: 0, count: 0 };
           }
@@ -253,7 +262,7 @@ export async function getPipelineMetrics(req: Request, res: Response, next: Next
         }
       }
 
-      if (pipeline.status === 'completed') {
+      if (pipeline.status === "completed") {
         totalDuration += pipelineDuration;
         completedCount++;
       }
@@ -261,23 +270,24 @@ export async function getPipelineMetrics(req: Request, res: Response, next: Next
       durationByType[pipeline.projectType].total += pipelineDuration;
       durationByType[pipeline.projectType].count += 1;
 
-      // Monthly trends
       if (pipeline.createdAt) {
-        const month = new Date(pipeline.createdAt).toLocaleString('default', { month: 'short', year: 'numeric' });
+        const month = new Date(pipeline.createdAt).toLocaleString("default", {
+          month: "short",
+          year: "numeric",
+        });
         if (!monthlyTrends[month]) {
           monthlyTrends[month] = { completed: 0, started: 0 };
         }
         monthlyTrends[month].started += 1;
-        if (pipeline.status === 'completed') {
+        if (pipeline.status === "completed") {
           monthlyTrends[month].completed += 1;
         }
       }
     }
 
-    // Calculate averages
-    const avgCompletionDays = completedCount > 0 ? Math.round(totalDuration / completedCount) : 0;
+    const avgCompletionDays =
+      completedCount > 0 ? Math.round(totalDuration / completedCount) : 0;
 
-    // Process bottlenecks
     const bottleneckList = Object.entries(bottleneckStages)
       .map(([name, data]) => ({
         name,
@@ -287,13 +297,11 @@ export async function getPipelineMetrics(req: Request, res: Response, next: Next
       .sort((a, b) => b.avgDuration - a.avgDuration)
       .slice(0, 5);
 
-    // Process duration by type
     const avgDurationByType: Record<string, number> = {};
     for (const [type, data] of Object.entries(durationByType)) {
       avgDurationByType[type] = Math.round(data.total / data.count);
     }
 
-    // Process monthly trends
     const monthlyTrendsList = Object.entries(monthlyTrends)
       .map(([month, data]) => ({ month, ...data }))
       .sort((a, b) => a.month.localeCompare(b.month))
@@ -314,15 +322,13 @@ export async function getPipelineMetrics(req: Request, res: Response, next: Next
   }
 }
 
-
-// ✅ NEW: Update pipeline stages (for drag & drop reordering)
 export async function updatePipelineStages(req: Request, res: Response, next: NextFunction) {
   try {
     const { pipelineId } = req.params;
     const { stages } = req.body;
     const userId = req.auth!.userId;
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("Pipeline")
       .update({
         stages,
@@ -343,7 +349,6 @@ export async function updatePipelineStages(req: Request, res: Response, next: Ne
   }
 }
 
-// ✅ NEW: Get pipeline notifications
 export async function getPipelineNotifications(req: Request, res: Response, next: NextFunction) {
   try {
     const userId = req.auth!.userId;
@@ -361,13 +366,16 @@ export async function getPipelineNotifications(req: Request, res: Response, next
     const overdue: any[] = [];
     const stuck: any[] = [];
 
-    for (const pipeline of pipelines) {
-      for (const stage of pipeline.stages) {
-        // Check overdue
-        if (stage.status !== 'complete' && stage.dueDate) {
+    for (const pipeline of pipelines ?? []) {
+      const stagesArray: any[] = Array.isArray(pipeline.stages) ? pipeline.stages : [];
+
+      for (const stage of stagesArray) {
+        if (stage.status !== "complete" && stage.dueDate) {
           const dueDate = new Date(stage.dueDate);
           const now = new Date();
-          const daysOverdue = Math.round((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+          const daysOverdue = Math.round(
+            (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)
+          );
           if (daysOverdue > 0) {
             overdue.push({
               pipelineId: pipeline.id,
@@ -378,11 +386,12 @@ export async function getPipelineNotifications(req: Request, res: Response, next
           }
         }
 
-        // Check stuck
-        if (stage.status === 'in-progress' && stage.startedAt) {
+        if (stage.status === "in-progress" && stage.startedAt) {
           const started = new Date(stage.startedAt);
           const now = new Date();
-          const daysInProgress = Math.round((now.getTime() - started.getTime()) / (1000 * 60 * 60 * 24));
+          const daysInProgress = Math.round(
+            (now.getTime() - started.getTime()) / (1000 * 60 * 60 * 24)
+          );
           if (daysInProgress > 14) {
             stuck.push({
               pipelineId: pipeline.id,
@@ -401,13 +410,16 @@ export async function getPipelineNotifications(req: Request, res: Response, next
   }
 }
 
-export async function updateStageTimeTracking(req: Request, res: Response, next: NextFunction) {
+export async function updateStageTimeTracking(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   try {
     const { pipelineId, stageId } = req.params;
     const { action, note } = req.body;
     const userId = req.auth!.userId;
 
-    // Verify ownership
     const { data: pipeline, error: fetchError } = await supabase
       .from("Pipeline")
       .select("id")
@@ -420,21 +432,25 @@ export async function updateStageTimeTracking(req: Request, res: Response, next:
     }
 
     const stages = await updateStageTime(pipelineId, stageId, action, note);
-    
+
     res.json({ success: true, stages });
   } catch (err) {
     next(err);
   }
 }
 
-export async function suggestPipelineTemplate(req: Request, res: Response, next: NextFunction) {
+export async function suggestPipelineTemplate(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   try {
     const { conversation } = req.body;
     if (!conversation) {
       throw new ApiError(400, "conversation is required");
     }
 
-    const result = await suggestPipelineTemplate(conversation);
+    const result = await suggestPipelineTemplateService(conversation);
     res.json({ template: result });
   } catch (err) {
     next(err);

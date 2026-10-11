@@ -1,60 +1,50 @@
 // backend/src/middleware/rateLimiter.ts
-import rateLimit, { RateLimitRequestHandler } from "express-rate-limit";
-import { RateLimitError } from "./errorHandler";
-import { Request, Response, NextFunction } from "express";
+import rateLimit from "express-rate-limit";
+import type { RequestHandler } from "express";
 
-const createRateLimiter = (
-  options: Partial<rateLimit.Options> = {}
-): RateLimitRequestHandler => {
-  return rateLimit({
-    windowMs: 60 * 1000,
-    max: 100,
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req: Request) => {
-      return req.auth?.userId || req.ip || "anonymous";
-    },
-    handler: (req: Request, res: Response) => {
-      throw new RateLimitError("Too many requests, please try again later");
-    },
-    skip: (req: Request) => {
-      return req.path === "/health";
-    },
-    ...options,
-  });
-};
-
-export const apiRateLimiter = createRateLimiter({
+/**
+ * General-purpose limiter for data routes: 100 requests / minute / IP.
+ * Applied broadly in app.ts and per-route where needed.
+ */
+export const apiRateLimiter: RequestHandler = rateLimit({
   windowMs: 60 * 1000,
   max: 100,
-});
-
-export const authRateLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  keyGenerator: (req: Request) => {
-    return (req.body?.email as string) || req.ip || "anonymous";
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      message: "Too many requests, please try again later.",
+    },
   },
 });
 
-export const aiRateLimiter = createRateLimiter({
+/**
+ * Tighter limiter for AI calls: 20 requests / minute / IP.
+ * Applied to /api/ai/* routes.
+ */
+export const aiRateLimiter: RequestHandler = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
-  keyGenerator: (req: Request) => req.auth?.userId || req.ip || "anonymous",
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      message: "AI rate limit exceeded. Please wait a moment and try again.",
+    },
+  },
 });
 
-export const emailRateLimiter = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 30,
-  keyGenerator: (req: Request) => req.auth?.userId || req.ip || "anonymous",
-});
-
-export const uploadRateLimiter = createRateLimiter({
-  windowMs: 60 * 1000,
+/**
+ * Auth-endpoint limiter: stricter to slow down credential stuffing.
+ */
+export const authRateLimiter: RequestHandler = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 min
   max: 10,
-  keyGenerator: (req: Request) => req.auth?.userId || req.ip || "anonymous",
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      message: "Too many login attempts. Please try again later.",
+    },
+  },
 });
-
-export function addRateLimitHeaders(req: Request, res: Response, next: NextFunction) {
-  next();
-}
