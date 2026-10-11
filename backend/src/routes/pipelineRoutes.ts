@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { requireTenant } from "../middleware/tenant";
+import { requireStaff } from "../middleware/requireRole";
 import {
   getPipeline,
   generatePipeline,
@@ -20,10 +21,10 @@ router.use(requireAuth, requireTenant);
 router.get("/metrics", getPipelineMetrics);
 router.get("/notifications", getPipelineNotifications);
 router.get("/:contactId", getPipeline);
-router.post("/:contactId/generate", generatePipeline);
-router.post("/:contactId/update", updatePipeline);
-router.put("/:pipelineId/stage/:stageId", updatePipelineStage);
-router.put("/:pipelineId/stages", updatePipelineStages);
-router.post("/:pipelineId/stage/:stageId/time", updateStageTimeTracking);
+router.post("/:contactId/generate", requireStaff, generatePipeline);
+router.post("/:contactId/update", requireStaff, updatePipeline);
+router.put("/:pipelineId/stage/:stageId", requireStaff, updatePipelineStage);
+router.put("/:pipelineId/stages", requireStaff, updatePipelineStages);
+router.post("/:pipelineId/stage/:stageId/time", requireStaff, updateStageTimeTracking);
 router.post("/suggest-template", suggestPipelineTemplate);
 export default router;

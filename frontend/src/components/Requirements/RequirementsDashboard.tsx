@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { useUserStore } from "../../stores/userStore";
+
 import {
   listRequirements,
   listModifications,
@@ -13,6 +15,9 @@ import type {
 } from "../../types";
 
 export function RequirementsDashboard() {
+  const user = useUserStore((s) => s.user);
+  const isStaff = user?.role === "STAFF";
+
   const [requirements, setRequirements] =
     useState<Requirement[]>([]);
 
@@ -402,8 +407,9 @@ export function RequirementsDashboard() {
                   </div>
                 )}
 
-                {modification.status ===
-                  "PENDING_REVIEW" && (
+                {isStaff &&
+                  modification.status ===
+                    "PENDING_REVIEW" && (
                   <div className="mt-6 pt-5 border-t border-black/10 dark:border-white/10">
 
                     <div className="text-xs opacity-50 mb-3">

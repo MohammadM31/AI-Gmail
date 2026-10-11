@@ -54,6 +54,9 @@ interface SidebarProps {
     view: NavView
   ) => void;
 
+  // Views the current user is not allowed to see (e.g. CLIENT users).
+  hiddenViews?: NavView[];
+
   mobileOpen?: boolean;
 
   onMobileClose?: () => void;
@@ -62,16 +65,24 @@ interface SidebarProps {
 function NavList({
   active,
   onSelect,
+  hiddenViews = [],
 }: {
   active: NavView;
 
   onSelect: (
     view: NavView
   ) => void;
+
+  hiddenViews?: NavView[];
 }) {
   return (
     <>
-      {NAV_ITEMS.map(
+      {NAV_ITEMS.filter(
+        (item) =>
+          !hiddenViews.includes(
+            item.key
+          )
+      ).map(
         (item) => (
           <button
             key={item.key}
@@ -97,6 +108,7 @@ function NavList({
 export function Sidebar({
   active,
   onSelect,
+  hiddenViews,
   mobileOpen,
   onMobileClose,
 }: SidebarProps) {
@@ -113,6 +125,7 @@ export function Sidebar({
         <NavList
           active={active}
           onSelect={onSelect}
+          hiddenViews={hiddenViews}
         />
 
       </aside>
@@ -156,6 +169,7 @@ export function Sidebar({
                 onSelect(view);
                 onMobileClose?.();
               }}
+              hiddenViews={hiddenViews}
             />
 
           </aside>

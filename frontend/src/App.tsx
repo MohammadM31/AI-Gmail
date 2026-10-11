@@ -1,6 +1,7 @@
 // frontend/src/App.tsx
 
 import {
+  useEffect,
   useState,
 } from "react";
 
@@ -66,6 +67,7 @@ import {
 
 import type {
   NavView,
+  User,
 } from "./types";
 
 interface ComposerState {
@@ -83,10 +85,33 @@ interface ComposerState {
   saved: boolean;
 }
 
+// Views hidden from each kind of user. Staff (any staffRole) see everything;
+// CLIENT users don't get the internal tooling.
+const CLIENT_HIDDEN_VIEWS: NavView[] = [
+  "pipeline",
+  "requirements",
+  "analytics",
+];
+
+function getHiddenViews(
+  user: User | null
+): NavView[] {
+  if (user?.role === "STAFF") {
+    return [];
+  }
+
+  // CLIENT, or role not (yet) known: fail closed.
+  return CLIENT_HIDDEN_VIEWS;
+}
+
 function App() {
   const {
     user,
   } = useUserStore();
+
+  const hiddenViews = getHiddenViews(
+    user
+  );
 
   const [
     activeView,
@@ -125,9 +150,26 @@ function App() {
     saved: false,
   });
 
+  // If the signed-in user can't see the current view (e.g. a different
+  // account signed in during the same session), fall back to Compose.
+  useEffect(() => {
+    if (
+      user &&
+      hiddenViews.includes(
+        activeView
+      )
+    ) {
+      setActiveView("compose");
+    }
+  }, [user, activeView]);
+
   const handleNavSelect = (
     view: NavView
   ) => {
+    if (hiddenViews.includes(view)) {
+      return;
+    }
+
     if (view !== "inbox") {
       setSelectedEmail(null);
       setSelectedThreadId(null);
@@ -343,6 +385,9 @@ function App() {
           active={activeView}
           onSelect={
             handleNavSelect
+          }
+          hiddenViews={
+            hiddenViews
           }
           mobileOpen={
             mobileNavOpen
