@@ -27,6 +27,11 @@ const NAV_ITEMS: {
   },
 
   {
+    key: "projects",
+    label: "Projects",
+  },
+
+  {
     key: "requirements",
     label: "Requirements",
   },

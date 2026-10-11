@@ -18,13 +18,13 @@ import {
 const router = Router();
 router.use(requireAuth, requireTenant);
 
-router.get("/metrics", getPipelineMetrics);
-router.get("/notifications", getPipelineNotifications);
-router.get("/:contactId", getPipeline);
+router.get("/metrics", requireStaff, getPipelineMetrics);
+router.get("/notifications", requireStaff, getPipelineNotifications);
+router.get("/:contactId", requireStaff, getPipeline);
 router.post("/:contactId/generate", requireStaff, generatePipeline);
 router.post("/:contactId/update", requireStaff, updatePipeline);
 router.put("/:pipelineId/stage/:stageId", requireStaff, updatePipelineStage);
 router.put("/:pipelineId/stages", requireStaff, updatePipelineStages);
 router.post("/:pipelineId/stage/:stageId/time", requireStaff, updateStageTimeTracking);
-router.post("/suggest-template", suggestPipelineTemplate);
+router.post("/suggest-template", requireStaff, suggestPipelineTemplate);
 export default router;

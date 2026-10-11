@@ -13,6 +13,8 @@ import type {
   PipelineMetrics,
   PipelineHistory,
   Project,
+  ProjectSummary,
+  ClientUser,
   Requirement,
   Modification,
 } from "../types";
@@ -986,6 +988,18 @@ export async function getPipelineComments(
 export async function listProjects() {
   return request<Project[]>(
     "/api/requirements/projects"
+  );
+}
+
+export async function listProjectsSummary() {
+  return request<ProjectSummary[]>(
+    "/api/requirements/projects/summary"
+  );
+}
+
+export async function listClientsInOrg() {
+  return request<ClientUser[]>(
+    "/api/requirements/clients"
   );
 }
 

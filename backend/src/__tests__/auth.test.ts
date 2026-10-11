@@ -30,7 +30,7 @@ describe("POST /api/auth/register", () => {
 
     const res = await request(app).post("/api/auth/register").send({
       email: "a@example.com",
-      password: "password123",
+      password: "Password123",
       name: "Ada",
       organizationName: "Acme",
     });
@@ -55,7 +55,7 @@ describe("POST /api/auth/register", () => {
 
     const res = await request(app).post("/api/auth/register").send({
       email: "b@example.com",
-      password: "password123",
+      password: "Password123",
       name: "Bea",
       inviteCode: "abc123",
     });
@@ -75,7 +75,7 @@ describe("POST /api/auth/register", () => {
 
     const res = await request(app).post("/api/auth/register").send({
       email: "c@example.com",
-      password: "password123",
+      password: "Password123",
       name: "Cy",
       inviteCode: "bogus",
     });
@@ -86,7 +86,7 @@ describe("POST /api/auth/register", () => {
   it("rejects when neither organizationName nor inviteCode is given", async () => {
     const res = await request(app).post("/api/auth/register").send({
       email: "d@example.com",
-      password: "password123",
+      password: "Password123",
       name: "Dee",
     });
 
@@ -97,7 +97,7 @@ describe("POST /api/auth/register", () => {
   it("rejects when both organizationName and inviteCode are given", async () => {
     const res = await request(app).post("/api/auth/register").send({
       email: "e@example.com",
-      password: "password123",
+      password: "Password123",
       name: "Eli",
       organizationName: "Acme",
       inviteCode: "abc123",
@@ -180,12 +180,17 @@ describe("GET /api/auth/me", () => {
   });
 });
 
+// requireStaff / requireRole look the caller's role up in the User table
+// before the controller runs, so the first from() call in each of these
+// tests is that role lookup.
 describe("GET /api/auth/org/invite-code", () => {
-  it("returns the organization's invite code for an authenticated member", async () => {
+  it("returns the organization's invite code for a staff member", async () => {
     const token = signAppToken("user-1", "org-1");
-    mockedSupabase.from.mockReturnValueOnce(
-      makeQuery({ data: { id: "org-1", name: "Acme", inviteCode: "abc123" }, error: null })
-    );
+    mockedSupabase.from
+      .mockReturnValueOnce(makeQuery({ data: { role: "STAFF", staffRole: "IT" }, error: null })) // role lookup
+      .mockReturnValueOnce(
+        makeQuery({ data: { id: "org-1", name: "Acme", inviteCode: "abc123" }, error: null })
+      ); // Organization lookup
 
     const res = await request(app)
       .get("/api/auth/org/invite-code")
@@ -194,14 +199,30 @@ describe("GET /api/auth/org/invite-code", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ organizationName: "Acme", inviteCode: "abc123" });
   });
+
+  it("rejects CLIENT users with 403", async () => {
+    const token = signAppToken("user-1", "org-1");
+    mockedSupabase.from.mockReturnValueOnce(
+      makeQuery({ data: { role: "CLIENT", staffRole: null }, error: null })
+    );
+
+    const res = await request(app)
+      .get("/api/auth/org/invite-code")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(mockedSupabase.from).toHaveBeenCalledTimes(1); // never reached the controller
+  });
 });
 
 describe("POST /api/auth/org/invite-code/regenerate", () => {
-  it("rotates and returns a new invite code", async () => {
+  it("rotates and returns a new invite code for an ADMIN", async () => {
     const token = signAppToken("user-1", "org-1");
-    mockedSupabase.from.mockReturnValueOnce(
-      makeQuery({ data: { id: "org-1", name: "Acme", inviteCode: "new-code" }, error: null })
-    );
+    mockedSupabase.from
+      .mockReturnValueOnce(makeQuery({ data: { role: "STAFF", staffRole: "ADMIN" }, error: null })) // role lookup (cached for requireRole)
+      .mockReturnValueOnce(
+        makeQuery({ data: { id: "org-1", name: "Acme", inviteCode: "new-code" }, error: null })
+      ); // Organization update
 
     const res = await request(app)
       .post("/api/auth/org/invite-code/regenerate")
@@ -209,5 +230,32 @@ describe("POST /api/auth/org/invite-code/regenerate", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.inviteCode).toBe("new-code");
+  });
+
+  it("rejects IT staff with 403 (ADMIN / SUPER_ADMIN only)", async () => {
+    const token = signAppToken("user-1", "org-1");
+    mockedSupabase.from.mockReturnValueOnce(
+      makeQuery({ data: { role: "STAFF", staffRole: "IT" }, error: null })
+    );
+
+    const res = await request(app)
+      .post("/api/auth/org/invite-code/regenerate")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(mockedSupabase.from).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects CLIENT users with 403", async () => {
+    const token = signAppToken("user-1", "org-1");
+    mockedSupabase.from.mockReturnValueOnce(
+      makeQuery({ data: { role: "CLIENT", staffRole: null }, error: null })
+    );
+
+    const res = await request(app)
+      .post("/api/auth/org/invite-code/regenerate")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
   });
 });

@@ -94,6 +94,7 @@ export async function createProject(
         description: input.description ?? null,
         repositoryUrl: input.repositoryUrl ?? null,
         applicationUrl: input.applicationUrl ?? null,
+        status: "ACTIVE",
       })
       .select()
       .single();
@@ -101,6 +102,78 @@ export async function createProject(
     if (error) throw new ApiError(500, error.message);
 
     res.status(201).json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// One embedded-select query (no per-project queries): each Project row comes
+// back with its client's name and the ids of its Requirement / Modification
+// rows, and the counts are reduced in JS below. Relies on the foreign keys
+// Project.clientUserId -> User.id, Requirement.projectId -> Project.id and
+// Modification.projectId -> Project.id.
+interface ProjectSummaryRow {
+  client: { name: string | null } | { name: string | null }[] | null;
+  requirements: { id: string }[] | null;
+  modifications: { id: string; status: string }[] | null;
+  [column: string]: unknown;
+}
+
+export async function listProjectsSummary(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { data, error } = await supabase
+      .from("Project")
+      .select(
+        "*, client:User!clientUserId(name), requirements:Requirement(id), modifications:Modification(id, status)"
+      )
+      .eq("organizationId", req.auth!.organizationId)
+      .eq("status", "ACTIVE")
+      .order("createdAt", { ascending: false });
+
+    if (error) throw new ApiError(500, error.message);
+
+    const rows = (data ?? []) as ProjectSummaryRow[];
+
+    const summaries = rows.map((row) => {
+      const { client, requirements, modifications, ...project } = row;
+      const clientRecord = Array.isArray(client) ? client[0] : client;
+
+      return {
+        ...project,
+        clientName: clientRecord?.name ?? null,
+        requirementCount: (requirements ?? []).length,
+        pendingModificationCount: (modifications ?? []).filter(
+          (modification) => modification.status === "PENDING_REVIEW"
+        ).length,
+      };
+    });
+
+    res.json(summaries);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listClients(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { data, error } = await supabase
+      .from("User")
+      .select("id, name, email")
+      .eq("organizationId", req.auth!.organizationId)
+      .eq("role", "CLIENT")
+      .order("name", { ascending: true });
+
+    if (error) throw new ApiError(500, error.message);
+
+    res.json(data ?? []);
   } catch (err) {
     next(err);
   }

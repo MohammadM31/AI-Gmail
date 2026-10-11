@@ -65,6 +65,10 @@ import {
   RequirementsDashboard,
 } from "./components/Requirements/RequirementsDashboard";
 
+import {
+  ProjectsDashboard,
+} from "./components/Requirements/ProjectsDashboard";
+
 import type {
   NavView,
   User,
@@ -89,6 +93,7 @@ interface ComposerState {
 // CLIENT users don't get the internal tooling.
 const CLIENT_HIDDEN_VIEWS: NavView[] = [
   "pipeline",
+  "projects",
   "requirements",
   "analytics",
 ];
@@ -327,6 +332,11 @@ function App() {
           <PipelineDashboard />
         );
 
+      case "projects":
+        return (
+          <ProjectsDashboard />
+        );
+
       case "requirements":
         return (
           <RequirementsDashboard />
@@ -434,6 +444,10 @@ function App() {
                 {activeView ===
                   "pipeline" &&
                   "Pipelines"}
+
+                {activeView ===
+                  "projects" &&
+                  "Projects"}
 
                 {activeView ===
                   "requirements" &&

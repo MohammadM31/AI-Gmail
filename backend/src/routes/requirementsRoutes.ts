@@ -5,6 +5,8 @@ import { requireStaff, requireRole } from "../middleware/requireRole";
 
 import {
   listProjects,
+  listProjectsSummary,
+  listClients,
   createProject,
   analyzeRequirements,
   listRequirements,
@@ -21,6 +23,9 @@ router.use(requireAuth, requireTenant);
 
 router.get("/projects", requireStaff, listProjects);
 router.post("/projects", requireStaff, createProject);
+router.get("/projects/summary", requireStaff, listProjectsSummary);
+
+router.get("/clients", requireStaff, listClients);
 
 router.post("/analyze", requireStaff, analyzeRequirements);
 

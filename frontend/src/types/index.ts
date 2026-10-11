@@ -180,6 +180,7 @@ export type NavView =
   | "inbox"
   | "contacts"
   | "pipeline"
+  | "projects"
   | "requirements"
   | "templates"
   | "analytics"
@@ -329,6 +330,24 @@ export interface Project {
   createdAt: string;
 
   updatedAt: string;
+}
+
+// GET /api/requirements/projects/summary
+export interface ProjectSummary extends Project {
+  clientName: string | null;
+
+  requirementCount: number;
+
+  pendingModificationCount: number;
+}
+
+// GET /api/requirements/clients
+export interface ClientUser {
+  id: string;
+
+  name: string;
+
+  email: string;
 }
 
 // ============================================================
