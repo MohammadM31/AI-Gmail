@@ -18,15 +18,6 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
 
   const token = header.slice("Bearer ".length);
 
-  // Dev bypass. Never allowed in production.
-  if (token === "dev-token" && process.env.NODE_ENV !== "production") {
-    req.auth = {
-      userId: "22222222-2222-2222-2222-222222222222",
-      organizationId: "11111111-1111-1111-1111-111111111111",
-    };
-    return next();
-  }
-
   try {
     const secret = process.env.JWT_SECRET;
     if (!secret) throw new Error("JWT_SECRET not configured");

@@ -128,6 +128,43 @@ export const emailCreateSchema = z.object({
     .optional(),
 });
 
+const chartDataSchema = z
+  .object({
+    type: z.enum([
+      "bar",
+      "line",
+      "pie",
+      "doughnut",
+      "radar",
+      "polarArea",
+    ]),
+    title: z.string().max(100),
+    labels: z.array(z.string()).max(20),
+    values: z.array(z.number()),
+  })
+  .nullable();
+
+export const emailUpdateSchema = z
+  .object({
+    recipients: z.array(recipientSchema).min(1).max(50).optional(),
+    subject: z.string().min(1).max(200).optional(),
+    content: emailContentSchema.optional(),
+    bulletPoints: z.array(z.string().max(500)).max(20).optional(),
+    chartData: chartDataSchema.optional(),
+    attachments: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(255),
+          path: z.string().min(1).max(500),
+          size: z.number().min(0).max(25 * 1024 * 1024).optional(),
+          type: z.string().optional(),
+        })
+      )
+      .max(10)
+      .optional(),
+  })
+  .strict();
+
 // ============================================================
 // CONTACTS
 // ============================================================

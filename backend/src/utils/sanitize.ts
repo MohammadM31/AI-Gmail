@@ -1,23 +1,18 @@
 // backend/src/utils/sanitize.ts
-import { JSDOM } from "jsdom";
-import { logger } from "./logger"; // ✅ ADDED
 
+export function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** @deprecated Email bodies are stored raw. Escape at an HTML boundary with escapeHtml. */
 export function sanitizeHtml(input: string): string {
   if (!input) return input;
-  
-  try {
-    const { window } = new JSDOM("<!DOCTYPE html>");
-    const document = window.document;
-    
-    const temp = document.createElement("div");
-    temp.textContent = input;
-    
-    const sanitized = temp.innerHTML;
-    return sanitized;
-  } catch (error) {
-    logger.warn({ error }, "Failed to sanitize HTML"); // ✅ Fixed
-    return input;
-  }
+  return escapeHtml(input);
 }
 
 export function sanitizeFilename(filename: string): string {

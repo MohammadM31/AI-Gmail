@@ -27,6 +27,10 @@ validateEnvironment();
 export const app =
   express();
 
+// Render sits one proxy hop in front of the app. Without this, every
+// rate-limit bucket is the proxy IP.
+app.set("trust proxy", 1);
+
 app.use(
   helmet({
     crossOriginResourcePolicy: {
@@ -61,7 +65,7 @@ app.use(
           "'self'",
           process.env.SUPABASE_URL ||
             "",
-          "https://api.gemini.google.com",
+          "https://api.openai.com",
         ].filter(Boolean),
 
         fontSrc: [
@@ -117,10 +121,6 @@ const getCorsOrigins =
         frontendUrl
       );
     }
-
-    origins.push(
-      /^https:\/\/.*\.vercel\.app$/
-    );
 
     if (
       process.env

@@ -15,6 +15,16 @@ export interface AiProcessResult {
 
 const MODEL_NAME = process.env.OPENAI_MODEL || "gpt-6-luna";
 
+function namesReferToSamePerson(contact: string, recipient: string): boolean {
+  const left = contact.trim().toLowerCase();
+  const right = recipient.trim().toLowerCase();
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const leftParts = left.split(/\s+/);
+  const rightParts = right.split(/\s+/);
+  return leftParts[0] === rightParts[0];
+}
+
 function cleanJsonResponse(text: string): string {
   return text
     .replace(/^```json\s*/i, "")
@@ -141,12 +151,11 @@ export async function processMessageWithAI(
     }
 
     if (contacts.length > 0 && parsed.recipients.length > 0) {
-      parsed.recipients = parsed.recipients.filter((recipient) =>
-        contacts.some(
-          (contact) =>
-            contact.toLowerCase() === recipient.name.toLowerCase()
-        )
-      );
+      parsed.recipients = parsed.recipients.filter((recipient) => {
+        const email = recipient.email?.trim();
+        if (email && email.includes("@")) return true;
+        return contacts.some((contact) => namesReferToSamePerson(contact, recipient.name));
+      });
     }
 
     return parsed;
