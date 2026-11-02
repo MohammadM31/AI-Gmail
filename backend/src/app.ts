@@ -307,6 +307,18 @@ app.use(
   })
 );
 
+app.get("/", (_req, res) => {
+  res.json({
+    status: "ok",
+    service: "ai-email-backend",
+    health: "/health",
+  });
+});
+
+app.get("/favicon.ico", (_req, res) => {
+  res.status(204).end();
+});
+
 app.get(
   "/health",
   (_req, res) => {
