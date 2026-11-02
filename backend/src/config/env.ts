@@ -6,7 +6,7 @@ export function validateEnvironment(): void {
     "SUPABASE_URL",
     "SUPABASE_SERVICE_ROLE_KEY",
     "JWT_SECRET",
-    "GEMINI_API_KEY",
+    "OPENAI_API_KEY",
   ];
 
   const missing = required.filter((key) => !process.env[key]);
@@ -19,6 +19,6 @@ export const config = {
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   jwtSecret: process.env.JWT_SECRET,
-  geminiApiKey: process.env.GEMINI_API_KEY,
+  openaiApiKey: process.env.OPENAI_API_KEY,
   nodeEnv: process.env.NODE_ENV || "development",
 };

@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { logger } from "../utils/logger";
 
 export interface AiProcessResult {
@@ -14,11 +13,7 @@ export interface AiProcessResult {
   tone: "professional" | "casual" | "urgent";
 }
 
-const genAI = process.env.GEMINI_API_KEY
-  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-  : null;
-
-const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+const MODEL_NAME = process.env.OPENAI_MODEL || "gpt-6-luna";
 
 function cleanJsonResponse(text: string): string {
   return text
@@ -86,25 +81,52 @@ Message:
 `;
 }
 
+async function completeJson(prompt: string): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "OPENAI_API_KEY is not configured on the backend. Set it in the Render environment."
+    );
+  }
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODEL_NAME,
+      reasoning_effort: "none",
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "Return only valid JSON." },
+        { role: "user", content: prompt },
+      ],
+    }),
+    signal: AbortSignal.timeout(20000),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `OpenAI request failed (${response.status}): ${body.slice(0, 300)}`
+    );
+  }
+
+  const data = (await response.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  const text = data.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error("OpenAI returned an empty response");
+  return text;
+}
+
 export async function processMessageWithAI(
   input: string,
   contacts: string[] = []
 ): Promise<AiProcessResult> {
-  if (!genAI) {
-    throw new Error(
-      "GEMINI_API_KEY is not configured on the backend. Set it in backend/.env."
-    );
-  }
-
-  const prompt = buildPrompt(input, contacts, input.length);
-
-  const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-  });
-
-  const result = await model.generateContent(prompt);
-
-  const text = result.response.text().trim();
+  const text = await completeJson(buildPrompt(input, contacts, input.length));
   const cleaned = cleanJsonResponse(text);
 
   try {
@@ -134,7 +156,7 @@ export async function processMessageWithAI(
         err,
         raw: text,
       },
-      "Failed to parse Gemini response as JSON"
+      "Failed to parse OpenAI response as JSON"
     );
 
     throw new Error("AI response was not valid JSON");
@@ -144,25 +166,11 @@ export async function processMessageWithAI(
 /**
  * Generic structured AI helper.
  *
- * This is used by the requirements system because requirements
- * analysis needs a different JSON structure than email generation.
+ * Callers keep their own JSON shape. This only sends the prompt and parses
+ * the object the model returns.
  */
-export async function generateStructuredAI<T>(
-  prompt: string
-): Promise<T> {
-  if (!genAI) {
-    throw new Error(
-      "GEMINI_API_KEY is not configured on the backend. Set it in backend/.env."
-    );
-  }
-
-  const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-  });
-
-  const result = await model.generateContent(`
-You are a software requirements analysis assistant.
-
+export async function generateStructuredAI<T>(prompt: string): Promise<T> {
+  const text = await completeJson(`
 Return ONLY valid JSON.
 
 Do not wrap the response in Markdown.
@@ -170,8 +178,6 @@ Do not include explanations before or after the JSON.
 
 ${prompt}
 `);
-
-  const text = result.response.text().trim();
   const cleaned = cleanJsonResponse(text);
 
   try {
@@ -182,7 +188,7 @@ ${prompt}
         err,
         raw: text,
       },
-      "Failed to parse structured Gemini response"
+      "Failed to parse structured OpenAI response"
     );
 
     throw new Error("AI response was not valid JSON");
