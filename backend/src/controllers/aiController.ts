@@ -7,10 +7,7 @@ import { supabase } from "../utils/supabaseClient";
 import { trackEvent } from "../services/analyticsService";
 import { logAudit } from "../services/auditService";
 import { logger } from "../utils/logger"; // ✅ ADDED
-import { 
-  ApiError, 
-  ServiceUnavailableError,
-} from "../middleware/errorHandler";
+import { ApiError } from "../middleware/errorHandler";
 
 const processSchema = z.object({ 
   message: z.string()
@@ -23,8 +20,8 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
     const { message } = processSchema.parse(req.body);
     logger.debug({ userId: req.auth!.userId, messageLength: message.length }, "AI request received");
 
-    if (!process.env.OPENAI_API_KEY) {
-      throw new ServiceUnavailableError("OpenAI");
+    if (!process.env.OPENAI_API_KEY?.trim()) {
+      throw new ApiError(503, "OPENAI_API_KEY is not set on the server.", "SERVICE_UNAVAILABLE");
     }
 
     const { data: contacts, error: contactsError } = await supabase
@@ -43,8 +40,9 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
     try {
       result = await processMessageWithAI(message, contactNames);
     } catch (aiError) {
+      const detail = aiError instanceof Error ? aiError.message : "OpenAI request failed";
       logger.error({ error: aiError, userId: req.auth!.userId }, "OpenAI processing failed");
-      throw new ServiceUnavailableError("OpenAI");
+      throw new ApiError(503, detail, "SERVICE_UNAVAILABLE");
     }
 
     logger.info({ 
