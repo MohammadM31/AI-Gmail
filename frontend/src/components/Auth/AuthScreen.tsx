@@ -33,7 +33,9 @@ export function AuthScreen() {
         id: "22222222-2222-2222-2222-222222222222",
         email: "dev@example.com",
         name: "Developer",
-        organizationId: "11111111-1111-1111-1111-111111111111"
+        organizationId: "11111111-1111-1111-1111-111111111111",
+        role: "STAFF",
+        staffRole: "ADMIN",
       },
       "dev-token"
     );

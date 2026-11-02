@@ -98,9 +98,10 @@ export async function processMessageWithAI(
 
   const prompt = buildPrompt(input, contacts, input.length);
 
-  const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-  });
+  const model = genAI.getGenerativeModel(
+    { model: MODEL_NAME },
+    { timeout: 15000 }
+  );
 
   const result = await model.generateContent(prompt);
 
@@ -156,9 +157,10 @@ export async function generateStructuredAI<T>(
     );
   }
 
-  const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-  });
+  const model = genAI.getGenerativeModel(
+    { model: MODEL_NAME },
+    { timeout: 15000 }
+  );
 
   const result = await model.generateContent(`
 You are a software requirements analysis assistant.

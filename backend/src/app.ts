@@ -20,6 +20,7 @@ import analyticsRoutes from "./routes/analyticsRoutes";
 import settingsRoutes from "./routes/settingsRoutes";
 import pipelineRoutes from "./routes/pipelineRoutes";
 import requirementsRoutes from "./routes/requirementsRoutes";
+import sprintRoutes from "./routes/sprintRoutes";
 
 validateEnvironment();
 
@@ -307,6 +308,18 @@ app.use(
   })
 );
 
+app.get("/", (_req, res) => {
+  res.json({
+    status: "ok",
+    service: "ai-email-backend",
+    health: "/health",
+  });
+});
+
+app.get("/favicon.ico", (_req, res) => {
+  res.status(204).end();
+});
+
 app.get(
   "/health",
   (_req, res) => {
@@ -369,6 +382,11 @@ app.use(
 app.use(
   "/api/requirements",
   requirementsRoutes
+);
+
+app.use(
+  "/api/sprints",
+  sprintRoutes
 );
 
 // ============================================================

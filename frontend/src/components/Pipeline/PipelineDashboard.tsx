@@ -1,9 +1,7 @@
 // frontend/src/components/Pipeline/PipelineDashboard.tsx
 import { useEffect, useState } from "react";
-import { supabase } from "../../services/supabaseClient";
-import { getPipelineMetrics, listContacts } from "../../services/apiClient";
-import { useUserStore } from "../../stores/userStore";
-import type { Pipeline, PipelineMetrics, Contact } from "../../types";
+import { getPipelineMetrics, listContacts, listPipelines } from "../../services/apiClient";
+import type { Pipeline, PipelineMetrics } from "../../types";
 
 interface PipelineWithContact extends Pipeline {
   contactName: string;
@@ -14,7 +12,6 @@ export function PipelineDashboard() {
   const [metrics, setMetrics] = useState<PipelineMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const user = useUserStore((s) => s.user);
 
   useEffect(() => {
     loadData();
@@ -24,14 +21,7 @@ export function PipelineDashboard() {
     setLoading(true);
     setError(null);
     try {
-      // Load pipelines
-      const { data: pipelineData, error: pipelineError } = await supabase
-        .from("Pipeline")
-        .select("*")
-        .eq("userId", user?.id)
-        .order("updatedAt", { ascending: false });
-
-      if (pipelineError) throw pipelineError;
+      const pipelineData = await listPipelines();
 
       // Load contacts for names
       const contacts = await listContacts();
@@ -64,6 +54,7 @@ export function PipelineDashboard() {
   };
 
   const getProgress = (stages: any[]) => {
+    if (!stages?.length) return 0;
     const completed = stages.filter(s => s.status === 'complete').length;
     return Math.round((completed / stages.length) * 100);
   };
@@ -186,7 +177,7 @@ export function PipelineDashboard() {
                   {p.status}
                 </span>
                 <span className="text-xs opacity-40">
-                  {p.stages.length} stages
+                  {(p.stages ?? []).length} stages
                 </span>
                 <span className="text-xs font-medium w-10 text-right">
                   {getProgress(p.stages)}%

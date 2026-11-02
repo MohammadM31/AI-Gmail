@@ -6,6 +6,28 @@ import { contactSchema } from "../utils/validators";
 import { processMessageWithAI } from "../services/geminiService";
 import { decryptEmailContent } from "../services/emailProcessor";
 
+function emailIncludesContact(
+  email: { recipients?: { name?: string; email?: string | null }[] | null },
+  contact: { name?: string | null; email?: string | null }
+) {
+  const recipients = Array.isArray(email.recipients) ? email.recipients : [];
+  const name = contact.name?.trim().toLowerCase();
+  const address = contact.email?.trim().toLowerCase();
+
+  return recipients.some((recipient) => {
+    const recipientName = recipient?.name?.trim().toLowerCase();
+    const recipientEmail = recipient?.email?.trim().toLowerCase();
+    if (address && recipientEmail && recipientEmail === address) return true;
+    if (name && recipientName && recipientName === name) return true;
+    return false;
+  });
+}
+
+function previewText(content: unknown, max: number) {
+  const text = typeof content === "string" ? content : "";
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
 export async function listContacts(req: Request, res: Response, next: NextFunction) {
   try {
     const { data, error } = await supabase
@@ -105,7 +127,7 @@ export async function getContactById(req: Request, res: Response, next: NextFunc
 // ✅ FIXED: Get thread summary between user and contact
 export async function getContactSummary(req: Request, res: Response, next: NextFunction) {
   try {
-    const { contactId } = req.params;
+    const contactId = req.params.id;
     const userId = req.auth!.userId;
 
     console.log(`🔍 Getting summary for contact: ${contactId}, user: ${userId}`);
@@ -138,12 +160,9 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
     }
 
     // ✅ Filter emails that contain the contact
-    const contactEmails = (emails || []).filter((email) => {
-      const recipients = email.recipients || [];
-      return recipients.some((r: any) => 
-        r.name?.toLowerCase() === contact.name.toLowerCase()
-      );
-    });
+    const contactEmails = (emails || []).filter((email) =>
+      emailIncludesContact(email, contact)
+    );
 
     console.log(`📧 Found ${contactEmails.length} emails with ${contact.name}`);
 
@@ -164,20 +183,45 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
       .map((e) => `Subject: ${e.subject}\nContent: ${e.content}\n---`)
       .join("\n");
 
-    // Generate summary using Gemini
-    const result = await processMessageWithAI(
-      `Summarize the entire email conversation between the user and ${contact.name} in 3-5 bullet points. 
+    // Each email already stores the bullets created when it was sent.
+    // gemini-3.8-flash does not respond, so don't wait on it when those exist.
+    const savedBullets = decryptedEmails.flatMap((email) =>
+      Array.isArray(email.bulletPoints)
+        ? email.bulletPoints.filter((point: unknown) => typeof point === "string" && point.trim())
+        : []
+    );
+
+    let bulletPoints = savedBullets.length > 0 ? savedBullets : ["No summary available."];
+
+    if (savedBullets.length === 0) {
+      try {
+        const result = await Promise.race([
+          processMessageWithAI(
+            `Summarize the entire email conversation between the user and ${contact.name} in 3-5 bullet points. 
       Focus on the main topics discussed, decisions made, and key action items.
       
       Conversation history:
       ${conversationText}`,
-      []
-    );
+            []
+          ),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Summary timed out")), 12000)
+          ),
+        ]);
+        if (result.bulletPoints?.length) bulletPoints = result.bulletPoints;
+      } catch (summaryErr) {
+        console.warn("Contact summary fallback:", summaryErr);
+        const subjects = decryptedEmails
+          .map((email) => email.subject)
+          .filter((subject: unknown) => typeof subject === "string" && subject.trim());
+        if (subjects.length) bulletPoints = subjects;
+      }
+    }
 
     const emailPreviews = decryptedEmails.map((e) => ({
       id: e.id,
       subject: e.subject,
-      content: e.content.substring(0, 150) + (e.content.length > 150 ? "..." : ""),
+      content: previewText(e.content, 150),
       bulletPoints: e.bulletPoints || [],
       createdAt: e.createdAt,
       status: e.status,
@@ -186,7 +230,7 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
 
     res.json({
       contact: contact.name,
-      summary: result.bulletPoints || ["No summary available."],
+      summary: bulletPoints,
       emailCount: decryptedEmails.length,
       emails: emailPreviews,
     });
@@ -199,7 +243,7 @@ export async function getContactSummary(req: Request, res: Response, next: NextF
 // ✅ FIXED: Get all threads with a specific contact
 export async function getContactThreads(req: Request, res: Response, next: NextFunction) {
   try {
-    const { contactId } = req.params;
+    const contactId = req.params.id;
     const userId = req.auth!.userId;
 
     console.log(`🔍 Getting threads for contact: ${contactId}, user: ${userId}`);
@@ -232,12 +276,9 @@ export async function getContactThreads(req: Request, res: Response, next: NextF
     }
 
     // ✅ Filter emails that contain the contact
-    const contactEmails = (sentEmails || []).filter((email) => {
-      const recipients = email.recipients || [];
-      return recipients.some((r: any) => 
-        r.name?.toLowerCase() === contact.name.toLowerCase()
-      );
-    });
+    const contactEmails = (sentEmails || []).filter((email) =>
+      emailIncludesContact(email, contact)
+    );
 
     console.log(`📧 Found ${contactEmails.length} emails with ${contact.name}`);
 
@@ -262,7 +303,7 @@ export async function getContactThreads(req: Request, res: Response, next: NextF
       messages: messages.map((m) => ({
         id: m.id,
         subject: m.subject,
-        content: m.content.substring(0, 200) + (m.content.length > 200 ? "..." : ""),
+        content: previewText(m.content, 200),
         bulletPoints: m.bulletPoints || [],
         createdAt: m.createdAt,
         status: m.status,

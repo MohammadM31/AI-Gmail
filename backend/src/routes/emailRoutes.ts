@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { requireTenant } from "../middleware/tenant";
+import { requireStaff } from "../middleware/requireRole";
 import { apiRateLimiter } from "../middleware/rateLimiter";
 import {
   listEmails,
@@ -13,6 +14,7 @@ import {
   summarizeThread,
   readReceipt,
 } from "../controllers/emailController";
+import { bulkSend } from "../controllers/bulkEmailController";
 import { createUploadUrl, getSignedDownloadUrl } from "../controllers/attachmentController";
 
 const router = Router();
@@ -20,6 +22,9 @@ router.use(requireAuth, requireTenant, apiRateLimiter);
 
 router.post("/attachments/upload-url", createUploadUrl);
 router.get("/attachments/signed-url", getSignedDownloadUrl);
+
+// Must be registered before any "/:id" route.
+router.post("/bulk", requireStaff, bulkSend);
 
 router.get("/", listEmails);
 router.post("/create", createEmailHandler);

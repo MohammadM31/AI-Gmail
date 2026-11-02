@@ -117,6 +117,14 @@ async function request<T>(
       );
     }
 
+    const isLoginAttempt =
+      path.startsWith("/api/auth/login") ||
+      path.startsWith("/api/auth/register");
+
+    if (res.status === 401 && !isLoginAttempt) {
+      useUserStore.getState().logout();
+    }
+
     throw new Error(
       body?.error?.message ??
         body?.message ??
@@ -936,6 +944,12 @@ export async function updatePipelineStages(
   );
 }
 
+export async function listPipelines() {
+  return request<Pipeline[]>(
+    "/api/pipeline"
+  );
+}
+
 export async function getPipelineNotifications() {
   return request<{
     overdue: {
@@ -978,6 +992,16 @@ export async function getPipelineComments(
 ) {
   return request<any[]>(
     `/api/pipeline/${pipelineId}/comments`
+  );
+}
+
+export async function deletePipelineComment(
+  pipelineId: string,
+  commentId: string
+) {
+  return request<void>(
+    `/api/pipeline/${pipelineId}/comments/${commentId}`,
+    { method: "DELETE" }
   );
 }
 

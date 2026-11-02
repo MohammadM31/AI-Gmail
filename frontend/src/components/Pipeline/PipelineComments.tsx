@@ -1,6 +1,10 @@
 // frontend/src/components/Pipeline/PipelineComments.tsx
-import React, { useState, useEffect } from "react"; // ✅ ADDED React
-import { supabase } from "../../services/supabaseClient";
+import React, { useState, useEffect } from "react";
+import {
+  addPipelineComment,
+  deletePipelineComment,
+  getPipelineComments,
+} from "../../services/apiClient";
 import { useUserStore } from "../../stores/userStore";
 
 interface PipelineComment {
@@ -32,22 +36,8 @@ export function PipelineComments({ pipelineId }: PipelineCommentsProps) {
   async function loadComments() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("PipelineComments")
-        .select(`
-          *,
-          User:userId (id, email, name)
-        `)
-        .eq("pipelineId", pipelineId)
-        .order("createdAt", { ascending: false });
-
-      if (error) throw error;
-
-      setComments(data.map((c: any) => ({
-        ...c,
-        userEmail: c.User?.email,
-        userName: c.User?.name,
-      })));
+      const data = await getPipelineComments(pipelineId);
+      setComments(data);
     } catch (err) {
       console.error("Failed to load comments:", err);
     } finally {
@@ -61,23 +51,12 @@ export function PipelineComments({ pipelineId }: PipelineCommentsProps) {
     setSubmitting(true);
     setError(null);
     try {
-      const { data, error } = await supabase
-        .from("PipelineComments")
-        .insert({
-          pipelineId,
-          userId: currentUser.id,
-          content: newComment.trim(),
-          createdAt: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+      const { comment } = await addPipelineComment(pipelineId, newComment.trim());
 
       setComments(prev => [{
-        ...data,
-        userEmail: currentUser.email,
-        userName: currentUser.name,
+        ...comment,
+        userEmail: comment.userEmail || currentUser.email,
+        userName: comment.userName || currentUser.name,
       }, ...prev]);
       setNewComment("");
     } catch (err) {
@@ -91,13 +70,7 @@ export function PipelineComments({ pipelineId }: PipelineCommentsProps) {
     if (!confirm("Delete this comment?")) return;
 
     try {
-      const { error } = await supabase
-        .from("PipelineComments")
-        .delete()
-        .eq("id", id)
-        .eq("userId", currentUser?.id);
-
-      if (error) throw error;
+      await deletePipelineComment(pipelineId, id);
 
       setComments(prev => prev.filter(c => c.id !== id));
     } catch (err) {

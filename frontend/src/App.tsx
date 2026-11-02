@@ -9,6 +9,8 @@ import {
   useUserStore,
 } from "./stores/userStore";
 
+import { API_URL } from "./services/apiClient";
+
 import {
   AuthScreen,
 } from "./components/Auth/AuthScreen";
@@ -112,7 +114,59 @@ function getHiddenViews(
 function App() {
   const {
     user,
+    token,
+    logout,
+    setSession,
   } = useUserStore();
+
+  const [sessionChecked, setSessionChecked] = useState(false);
+
+  // A saved user without a token this server accepts used to fire a 401
+  // from every screen. Confirm the token before rendering those screens.
+  useEffect(() => {
+    if (!token) {
+      setSessionChecked(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch(`${API_URL}/api/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then(async (res) => {
+        if (res.status === 401) {
+          logout();
+          return;
+        }
+        if (!res.ok) return;
+
+        const profile = await res.json();
+        setSession(
+          {
+            id: profile.id,
+            email: profile.email,
+            name: profile.name,
+            organizationId: profile.organizationId,
+            role: profile.role,
+            staffRole: profile.staffRole ?? null,
+          },
+          token
+        );
+      })
+      .catch(() => {
+        // Leave the saved session in place if the backend is unreachable.
+      })
+      .finally(() => {
+        if (!cancelled) setSessionChecked(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, logout, setSession]);
 
   const hiddenViews = getHiddenViews(
     user
@@ -183,6 +237,14 @@ function App() {
     setActiveView(view);
     setMobileNavOpen(false);
   };
+
+  if (!sessionChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm opacity-60">
+        Checking session…
+      </div>
+    );
+  }
 
   if (!user) {
     return (
