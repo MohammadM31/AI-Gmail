@@ -26,8 +26,8 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
     const { message } = processSchema.parse(req.body);
     logger.debug({ userId: req.auth!.userId, messageLength: message.length }, "AI request received");
 
-    if (!process.env.GEMINI_API_KEY) {
-      throw new ServiceUnavailableError("Gemini AI");
+    if (!process.env.OPENAI_API_KEY) {
+      throw new ServiceUnavailableError("OpenAI");
     }
 
     const { data: contacts, error: contactsError } = await supabase
@@ -46,8 +46,8 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
     try {
       result = await processMessageWithAI(message, contactNames);
     } catch (aiError) {
-      logger.error({ error: aiError, userId: req.auth!.userId }, "Gemini AI processing failed");
-      throw new ServiceUnavailableError("Gemini AI");
+      logger.error({ error: aiError, userId: req.auth!.userId }, "OpenAI processing failed");
+      throw new ServiceUnavailableError("OpenAI");
     }
 
     logger.info({ 

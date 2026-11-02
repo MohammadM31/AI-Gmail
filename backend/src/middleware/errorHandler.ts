@@ -102,7 +102,12 @@ export function errorHandler(
   // Handle specific third-party errors
   if (err instanceof Error) {
     // Check for Gemini/Google AI errors
-    if (err.message.includes("GEMINI_API_KEY") || err.message.includes("Gemini")) {
+    if (
+      err.message.includes("GEMINI_API_KEY") ||
+      err.message.includes("Gemini") ||
+      err.message.includes("OPENAI_API_KEY") ||
+      err.message.includes("OpenAI")
+    ) {
       logger.error({ ...errorContext, error: err }, "AI Service error");
       return res.status(503).json({
         error: {
