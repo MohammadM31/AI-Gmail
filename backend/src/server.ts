@@ -6,6 +6,7 @@ import { logger } from "./utils/logger";
 import { startScheduledTemplateService } from "./services/scheduledTemplateService";
 import { startEmailClassifierCron } from "./services/emailClassifierService";
 import { startRequirementsSweeper } from "./services/requirementsSweeper";
+import { startMailboxSweeper } from "./services/mailDeliveryService";
 
 const httpServer = http.createServer(app);
 initSocket(httpServer);
@@ -14,6 +15,7 @@ const PORT = Number(process.env.PORT ?? 5000);
 
 httpServer.listen(PORT, () => {
   logger.info(`Backend listening on http://localhost:${PORT}`);
+  startMailboxSweeper();
 
   // Scheduled template service (existing)
   if (

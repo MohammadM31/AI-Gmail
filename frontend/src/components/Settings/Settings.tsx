@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useUserStore } from "../../stores/userStore";
 import * as api from "../../services/apiClient";
 import type { UserSettingsData } from "../../types";
+import { MailboxSettings } from "./MailboxSettings";
 
 export function Settings() {
   const user = useUserStore((s) => s.user);
@@ -88,7 +89,7 @@ export function Settings() {
   }
 
   return (
-    <div className="space-y-6 max-w-md">
+    <div className="space-y-6 max-w-xl">
       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4">
         <h3 className="text-sm font-medium mb-2">Profile</h3>
         <p className="text-sm opacity-70">{user?.name}</p>
@@ -100,6 +101,8 @@ export function Settings() {
           Sign out
         </button>
       </div>
+
+      <MailboxSettings />
 
       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4 space-y-3">
         <h3 className="text-sm font-medium">Defaults</h3>

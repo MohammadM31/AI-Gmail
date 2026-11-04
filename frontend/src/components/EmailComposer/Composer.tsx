@@ -6,7 +6,7 @@ import { SplitView } from "./SplitView";
 import { RecipientSuggester } from "./RecipientSuggester";
 import { TemplateSelector } from "./TemplateSelector";
 import { RunningSummary } from "./RunningSummary";
-import { processMessage, createEmail, sendEmail, uploadAttachment } from "../../services/apiClient";
+import { processMessage, createEmail, sendEmail, undoSend, uploadAttachment } from "../../services/apiClient";
 import type { AiProcessResult, Attachment } from "../../types";
 import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
 
@@ -32,6 +32,9 @@ export function Composer({
   // ✅ State
   const [text, setText] = useState(externalState?.text || "");
   const [recipients, setRecipients] = useState(externalState?.recipients || []);
+  const [ccText, setCcText] = useState("");
+  const [bccText, setBccText] = useState("");
+  const [sendAt, setSendAt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AiProcessResult | null>(externalState?.result || null);
@@ -42,7 +45,21 @@ export function Composer({
   const [isDirty, setIsDirty] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const hasValidRecipients = recipients.length > 0;
+  const hasValidRecipients =
+    recipients.length > 0 && recipients.every((recipient) => recipient.email?.includes("@"));
+
+  function extraAddresses(value: string) {
+    return value
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const email = part.match(/[^\s<>,"]+@[^\s<>,"]+/)?.[0] ?? "";
+        const name = part.replace(email, "").replace(/[<>]/g, "").trim() || email.split("@")[0];
+        return { name, email };
+      })
+      .filter((recipient) => recipient.email.includes("@"));
+  }
 
   // ✅ Keyboard shortcuts
   useKeyboardShortcuts([
@@ -190,6 +207,8 @@ export function Composer({
     try {
       const email = await createEmail({
         recipients,
+        cc: extraAddresses(ccText),
+        bcc: extraAddresses(bccText),
         subject: result.subject,
         content: text,
         bulletPoints: result.bulletPoints,
@@ -237,6 +256,8 @@ export function Composer({
       if (!emailId) {
         const email = await createEmail({
           recipients,
+          cc: extraAddresses(ccText),
+          bcc: extraAddresses(bccText),
           subject: result.subject,
           content: text,
           bulletPoints: result.bulletPoints,
@@ -247,11 +268,16 @@ export function Composer({
         emailId = email.id;
       }
 
-      await sendEmail(emailId);
+      const sent = await sendEmail(emailId, sendAt ? { sendAt: new Date(sendAt).toISOString() } : undefined);
 
-      toast.success("✅ Email sent successfully!", {
-        description: `To: ${recipients.map(r => r.name).join(", ")}`,
-      });
+      if (sent.status === "pending") {
+        toast.success("Sending in a few seconds", {
+          description: `To: ${recipients.map((r) => r.name).join(", ")}`,
+          action: { label: "Undo", onClick: () => undoSend(sent.id) },
+        });
+      } else {
+        toast.success("Scheduled", { description: sent.sentAt ? new Date(sent.sentAt).toLocaleString() : "" });
+      }
 
       resetComposer();
 
@@ -277,6 +303,27 @@ export function Composer({
       <div className="rounded-xl border border-black/10 dark:border-white/10 p-4 bg-surface-light dark:bg-surface-dark space-y-3">
         {/* Recipients */}
         <RecipientSuggester selected={recipients} onChange={setRecipients} />
+        <input
+          className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none"
+          placeholder="Cc, comma separated"
+          value={ccText}
+          onChange={(event) => setCcText(event.target.value)}
+        />
+        <input
+          className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none"
+          placeholder="Bcc, comma separated"
+          value={bccText}
+          onChange={(event) => setBccText(event.target.value)}
+        />
+        <label className="flex items-center gap-2 text-xs opacity-70">
+          Schedule
+          <input
+            type="datetime-local"
+            className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1"
+            value={sendAt}
+            onChange={(event) => setSendAt(event.target.value)}
+          />
+        </label>
 
         {/* Subject line */}
         {result && (

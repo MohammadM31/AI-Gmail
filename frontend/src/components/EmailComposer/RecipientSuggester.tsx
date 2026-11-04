@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Contact } from "../../types";
-import { listContacts } from "../../services/apiClient";
+import { getMailbox, listContacts } from "../../services/apiClient";
 
 interface Props {
   selected: { name: string; email: string | null }[];
@@ -9,10 +9,12 @@ interface Props {
 
 export function RecipientSuggester({ selected, onChange }: Props) {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [lists, setLists] = useState<{ name: string; addresses: { name: string; email: string | null }[] }[]>([]);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
     listContacts().then(setContacts).catch(() => {});
+    getMailbox().then((mailbox) => setLists(mailbox.lists)).catch(() => {});
   }, []);
 
   const suggestions = contacts.filter(
@@ -22,8 +24,16 @@ export function RecipientSuggester({ selected, onChange }: Props) {
   );
 
   function addFreeText() {
-    if (!query.trim()) return;
-    onChange([...selected, { name: query, email: null }]);
+    const raw = query.trim();
+    if (!raw) return;
+    const named = raw.match(/^(.*)<([^>]+)>$/);
+    const email = (named ? named[2] : raw).trim();
+    if (email.includes("@")) {
+      const name = (named ? named[1] : email.split("@")[0]).trim() || email;
+      onChange([...selected, { name, email }]);
+    } else {
+      onChange([...selected, { name: raw, email: null }]);
+    }
     setQuery("");
   }
 
@@ -48,11 +58,32 @@ export function RecipientSuggester({ selected, onChange }: Props) {
       <div className="relative">
         <input
           className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none"
-          placeholder="Add a recipient…"
+          placeholder="Name, or anyone@email.com"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addFreeText()}
         />
+        {query && lists.some((list) => list.name.toLowerCase().includes(query.toLowerCase())) && (
+          <div className="absolute z-10 mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark shadow-lg">
+            {lists
+              .filter((list) => list.name.toLowerCase().includes(query.toLowerCase()))
+              .map((list) => (
+                <button
+                  key={list.name}
+                  className="block w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5"
+                  onClick={() => {
+                    const next = list.addresses.filter(
+                      (address) => address.email && !selected.some((item) => item.email === address.email)
+                    );
+                    onChange([...selected, ...next]);
+                    setQuery("");
+                  }}
+                >
+                  List · {list.name}
+                </button>
+              ))}
+          </div>
+        )}
         {query && suggestions.length > 0 && (
           <div className="absolute z-10 mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark shadow-lg">
             {suggestions.map((c) => (

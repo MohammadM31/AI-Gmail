@@ -1,4 +1,5 @@
 import { EmailItem } from "../../types";
+import { ChartRenderer } from "../Shared/ChartRenderer";
 
 interface ThreadMessageProps {
   message: EmailItem;
@@ -60,7 +61,9 @@ export function ThreadMessage({ message, isCurrentUser, senderName }: ThreadMess
           </ul>
         )}
         {message.chartData && (
-          <div className="mt-2 text-xs opacity-60">📊 Chart included</div>
+          <div className="mt-2">
+            <ChartRenderer chart={message.chartData} />
+          </div>
         )}
       </div>
     </div>

@@ -16,59 +16,23 @@ Emails are AI summaries of the critical facts, with an infographic that supports
 
 ## Active
 
-### Infographics
-
-- Generate chart and infographic images with matplotlib instead of returning Chart.js JSON for the browser.
-- When the prompt has real figures (growth, client counts, comparisons), the image must show those figures.
-- When the prompt has no numbers, keep the bullets and add a graphic only if it makes a fact easier to see.
-
-### Mail in and out
-
-- Deliver a sent message to the recipient. "Send" today only sets `status` to `sent` in Supabase.
-- Receive inbound mail into the inbox.
-- Record bounces and delivery status.
-- Send with SPF, DKIM, and DMARC once mail leaves the app.
-
-### Mailbox
-
-- Separate Sent, Drafts, Spam, Archive, and Trash. Trash should restore a soft-deleted message.
-- Stars or flags, unread state, and an unread count.
-- Custom labels.
-
-### Conversation
-
-- Reply, reply all, and forward, still as short AI summaries rather than essays.
-- Quoted history on a reply, kept short.
-- A per-user signature made of the same short facts, not a rich-text block.
-
-### Addressing
-
-- Let the user send to an address that is not already a saved contact.
-- Cc and Bcc.
-- Send-as aliases and mailing lists.
-
-### Delivery controls
-
-- Undo send.
-- Schedule send.
-- Filters and rules.
-- Auto-reply.
-
-### Search
-
-- Search operators such as `from:`, `has:attachment`, and a date range. Current search matches a recipient name.
-
-### Shared mail
-
-- Shared inbox and delegation.
-- Notify the user when new mail arrives. The current realtime event is only `email:sent` inside the organization.
-
 ## Out of scope
 
 - Rich-text or HTML letter bodies. The message stays bullets plus an infographic.
 - Paragraph-length emails generated from the prompt.
 
 ## Archive
+
+Shipped 2026-11-04:
+
+- Matplotlib infographics. A prompt with real figures becomes a PNG of those figures. A prompt without numbers keeps the bullets and adds a fact graphic only when that is easier to scan. Chart.js remains for older messages that have no image.
+- Sending delivers inside the organization after a 10 second undo window. External delivery uses SMTP when `SMTP_HOST` and `SMTP_FROM` are set, and DKIM when `DKIM_PRIVATE_KEY`, `DKIM_DOMAIN`, and `DKIM_SELECTOR` are set. SPF and DMARC stay DNS records on the sending domain. Inbound mail and bounces arrive at `/api/mail/inbound` and `/api/mail/bounce` with `MAIL_WEBHOOK_SECRET`.
+- Mailbox folders: Inbox, Sent, Drafts, Scheduled, Spam, Archive, Trash, and Starred. Trash restores a soft-deleted message. Stars, unread count, and labels.
+- Reply, reply all, and forward stay short bullets, with a short quoted history. A signature is a list of facts.
+- Send to an address that is not a saved contact. Cc, Bcc, send-as aliases, and mailing lists.
+- Undo send, schedule send, filter rules, and auto-reply.
+- Search operators: `from:`, `to:`, `subject:`, `has:attachment`, `is:starred`, `is:unread`, `label:`, `before:`, and `after:`.
+- Shared mailbox delegation, and an `email:received` notification for the recipient.
 
 Already in the repo when this backlog was created (2026-11-04):
 

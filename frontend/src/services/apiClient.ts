@@ -8,6 +8,7 @@ import type {
   Template,
   User,
   UserSettingsData,
+  MailboxSettings,
   Pipeline,
   PipelineStage,
   PipelineMetrics,
@@ -341,13 +342,18 @@ export async function listEmails(
   return request<{
     items: EmailItem[];
     total: number;
+    unread: number;
   }>(
     `/api/emails${qs}`
   );
 }
 
 export async function createEmail(
-  input: Partial<EmailItem>
+  input: Partial<EmailItem> & {
+    cc?: { name: string; email: string | null }[];
+    bcc?: { name: string; email: string | null }[];
+    fromAlias?: string;
+  }
 ) {
   return request<EmailItem>(
     "/api/emails/create",
@@ -362,14 +368,85 @@ export async function createEmail(
 }
 
 export async function sendEmail(
-  id: string
+  id: string,
+  body?: { sendAt?: string }
 ) {
   return request<EmailItem>(
     `/api/emails/${id}/send`,
     {
       method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
     }
   );
+}
+
+export async function undoSend(id: string) {
+  return request<EmailItem>(`/api/emails/${id}/undo`, { method: "POST" });
+}
+
+export async function replyEmail(
+  id: string,
+  body: {
+    mode: "reply" | "replyAll" | "forward";
+    message: string;
+    recipients?: { name: string; email: string }[];
+  }
+) {
+  return request<EmailItem>(`/api/emails/${id}/reply`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateEmailFlags(
+  id: string,
+  body: {
+    starred?: boolean;
+    unread?: boolean;
+    folder?: "inbox" | "sent" | "drafts" | "spam" | "archive" | "trash";
+    labels?: string[];
+  }
+) {
+  return request<EmailItem>(`/api/emails/${id}/flags`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function restoreEmail(id: string) {
+  return request<EmailItem>(`/api/emails/${id}/restore`, { method: "POST" });
+}
+
+export async function getMailbox() {
+  return request<MailboxSettings>("/api/mailbox");
+}
+
+export async function updateMailbox(body: Partial<MailboxSettings>) {
+  return request<MailboxSettings>("/api/mailbox", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function shareMailbox(email: string, role: "read" | "send") {
+  return request<MailboxSettings>("/api/mailbox/shares", {
+    method: "POST",
+    body: JSON.stringify({ email, role }),
+  });
+}
+
+export async function addMailRule(body: {
+  from?: string;
+  subject?: string;
+  hasAttachment?: boolean;
+  folder?: "inbox" | "spam" | "archive" | "trash";
+  label?: string;
+  star?: boolean;
+}) {
+  return request<MailboxSettings>("/api/mailbox/rules", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function getEmail(
@@ -1025,6 +1102,49 @@ export async function listClientsInOrg() {
   return request<ClientUser[]>(
     "/api/requirements/clients"
   );
+}
+
+export interface ConversationPhase {
+  id: string;
+  name: string;
+  detail: string;
+  date: string | null;
+  edited: boolean;
+}
+
+export interface ConversationFact {
+  id: string;
+  label: string;
+  value: string;
+  edited: boolean;
+}
+
+export interface ConversationBoard {
+  personId: string;
+  personType: "user" | "contact";
+  personName: string;
+  name: string;
+  summary: string;
+  nameEdited: boolean;
+  summaryEdited: boolean;
+  phases: ConversationPhase[];
+  facts: ConversationFact[];
+  conversationCount: number;
+  updatedAt: string;
+}
+
+export async function listConversationProjects() {
+  return request<{ boards: ConversationBoard[] }>("/api/client-projects");
+}
+
+export async function updateConversationProject(
+  personId: string,
+  board: Pick<ConversationBoard, "name" | "summary" | "phases" | "facts">
+) {
+  return request<ConversationBoard>(`/api/client-projects/${personId}`, {
+    method: "PATCH",
+    body: JSON.stringify(board),
+  });
 }
 
 export async function createProject(

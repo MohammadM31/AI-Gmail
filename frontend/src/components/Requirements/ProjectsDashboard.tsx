@@ -8,6 +8,7 @@ import {
 } from "../../services/apiClient";
 
 import type { ClientUser, ProjectSummary } from "../../types";
+import { ConversationProjects } from "../Projects/ConversationProjects";
 
 const INPUT_CLASS =
   "w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none";
@@ -138,6 +139,7 @@ export function ProjectsDashboard() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
+      <ConversationProjects embedded />
       {error && (
         <div className="rounded-xl border border-red-500/20 bg-red-500/10 text-red-500 p-4 text-sm">
           {error}

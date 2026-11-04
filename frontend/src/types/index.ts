@@ -5,6 +5,8 @@ export interface ChartData {
   title: string;
   labels: string[];
   values: number[];
+  imagePath?: string | null;
+  facts?: string[];
 }
 
 export interface AiProcessResult {
@@ -78,6 +80,7 @@ export interface EmailItem {
   recipients: {
     name: string;
     email: string | null;
+    role?: "to" | "cc" | "bcc";
   }[];
 
   subject: string;
@@ -93,8 +96,40 @@ export interface EmailItem {
   status:
     | "draft"
     | "sent"
+    | "pending"
+    | "scheduled"
+    | "sending"
     | "edited"
     | "deleted";
+
+  from?: {
+    name: string;
+    email: string | null;
+  } | null;
+
+  starred?: boolean;
+
+  unread?: boolean;
+
+  labels?: string[];
+
+  folder?: string | null;
+
+  deliveryStatus?: string | null;
+
+  bounceReason?: string | null;
+
+  undoUntil?: string | null;
+
+  cc?: {
+    name: string;
+    email: string | null;
+  }[];
+
+  bcc?: {
+    name: string;
+    email: string | null;
+  }[];
 
   threadId: string | null;
 
@@ -108,6 +143,25 @@ export interface EmailItem {
 // ============================================================
 // SETTINGS
 // ============================================================
+
+export interface MailboxSettings {
+  signature: string[];
+  aliases: { name: string; email: string | null }[];
+  lists: { name: string; addresses: { name: string; email: string | null }[] }[];
+  autoReply: { enabled: boolean; facts: string[]; until: string | null };
+  rules: {
+    id: string;
+    from?: string;
+    subject?: string;
+    hasAttachment?: boolean;
+    folder?: "inbox" | "spam" | "archive" | "trash";
+    label?: string;
+    star?: boolean;
+  }[];
+  shares: { userId: string; role: "read" | "send" }[];
+  access: { userId: string; role: "read" | "send"; name: string; email: string }[];
+  mailAuth: { smtp: boolean; dkim: boolean; spf: string; dmarc: string };
+}
 
 export interface UserSettingsData {
   aiTone:

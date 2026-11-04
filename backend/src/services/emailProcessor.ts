@@ -20,7 +20,7 @@ export interface CreateEmailInput {
   chartData?: unknown;
   threadId?: string | null;
   attachments?: EmailAttachment[];
-  status?: "draft" | "sent";
+  status?: "draft" | "sent" | "pending" | "scheduled";
   sentAt?: string;
 }
 

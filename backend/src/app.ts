@@ -21,6 +21,9 @@ import settingsRoutes from "./routes/settingsRoutes";
 import pipelineRoutes from "./routes/pipelineRoutes";
 import requirementsRoutes from "./routes/requirementsRoutes";
 import sprintRoutes from "./routes/sprintRoutes";
+import clientProjectRoutes from "./routes/clientProjectRoutes";
+import mailboxRoutes from "./routes/mailboxRoutes";
+import mailWebhookRoutes from "./routes/mailWebhookRoutes";
 
 validateEnvironment();
 
@@ -387,6 +390,21 @@ app.use(
 app.use(
   "/api/sprints",
   sprintRoutes
+);
+
+app.use(
+  "/api/client-projects",
+  clientProjectRoutes
+);
+
+app.use(
+  "/api/mailbox",
+  mailboxRoutes
+);
+
+app.use(
+  "/api/mail",
+  mailWebhookRoutes
 );
 
 // ============================================================

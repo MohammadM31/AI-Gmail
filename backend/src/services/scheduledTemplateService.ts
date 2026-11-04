@@ -55,7 +55,7 @@ export async function checkAndSendScheduledTemplates() {
             bulletPoints: ["This email was sent automatically from a template."],
             chartData: null,
             attachments: [],
-            status: "sent",
+            status: "pending",
             threadId: crypto.randomUUID(), // ✅ Now works with import
             sentAt: now.toISOString(),
           });

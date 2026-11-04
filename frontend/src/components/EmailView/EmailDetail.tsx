@@ -1,7 +1,6 @@
-// frontend/src/components/EmailView/EmailDetail.tsx
 import type { EmailItem } from "../../types";
 import { ChartRenderer } from "../Shared/ChartRenderer";
-import { sendEmail, getAttachmentUrl } from "../../services/apiClient";
+import { deleteEmail, getAttachmentUrl, replyEmail, restoreEmail, sendEmail, updateEmailFlags } from "../../services/apiClient";
 import { useState } from "react";
 
 export function EmailDetail({
@@ -14,6 +13,9 @@ export function EmailDetail({
   onUpdated: (email: EmailItem) => void;
 }) {
   const [sending, setSending] = useState(false);
+  const [note, setNote] = useState("");
+  const [forwardTo, setForwardTo] = useState("");
+  const [label, setLabel] = useState("");
 
   async function handleOpenAttachment(path: string) {
     try {
@@ -36,6 +38,37 @@ export function EmailDetail({
     }
   }
 
+  async function act(folder: "inbox" | "spam" | "archive" | "trash") {
+    if (folder === "trash") {
+      await deleteEmail(email.id);
+      onBack();
+      return;
+    }
+    onUpdated(await updateEmailFlags(email.id, { folder }));
+  }
+
+  async function sendReply(mode: "reply" | "replyAll" | "forward") {
+    if (!note.trim()) return;
+    setSending(true);
+    try {
+      const recipients =
+        mode === "forward"
+          ? forwardTo
+              .split(",")
+              .map((part) => part.trim())
+              .filter((part) => part.includes("@"))
+              .map((emailAddress) => ({ name: emailAddress.split("@")[0], email: emailAddress }))
+          : undefined;
+      const updated = await replyEmail(email.id, { mode, message: note, recipients });
+      setNote("");
+      onUpdated(updated);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not send");
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <button onClick={onBack} className="text-xs opacity-60 hover:opacity-100 underline">
@@ -43,13 +76,28 @@ export function EmailDetail({
       </button>
 
       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-2 gap-2">
           <h2 className="font-semibold">{email.subject}</h2>
-          <span className="text-xs opacity-50 capitalize">{email.status}</span>
+          <span className="text-xs opacity-50 capitalize">{email.deliveryStatus || email.status}</span>
         </div>
-        <p className="text-xs opacity-60 mb-3">
+        {email.from && (
+          <p className="text-xs opacity-60 mb-1">
+            From: {email.from.name} {email.from.email ? `<${email.from.email}>` : ""}
+          </p>
+        )}
+        <p className="text-xs opacity-60 mb-1">
           To: {email.recipients.map((r) => r.name).join(", ") || "—"}
         </p>
+        {email.cc && email.cc.length > 0 && (
+          <p className="text-xs opacity-60 mb-1">Cc: {email.cc.map((r) => r.name).join(", ")}</p>
+        )}
+        {email.bcc && email.bcc.length > 0 && (
+          <p className="text-xs opacity-60 mb-1">Bcc: {email.bcc.map((r) => r.name).join(", ")}</p>
+        )}
+        {email.bounceReason && <p className="text-xs text-highlight mb-2">{email.bounceReason}</p>}
+        {email.labels && email.labels.length > 0 && (
+          <p className="text-xs opacity-60 mb-2">{email.labels.join(" · ")}</p>
+        )}
         <ul className="space-y-1 text-sm mb-3">
           {email.bulletPoints.map((b, i) => (
             <li key={i} className="flex gap-2">
@@ -72,15 +120,67 @@ export function EmailDetail({
             ))}
           </ul>
         )}
-        {email.status === "draft" && (
-          <button
-            onClick={handleSend}
-            disabled={sending}
-            className="rounded-full bg-highlight px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40 hover:opacity-90"
-          >
-            {sending ? "Sending…" : "Send"}
-          </button>
-        )}
+        <div className="flex flex-wrap gap-2 mb-3">
+          {email.status === "draft" && (
+            <button
+              onClick={handleSend}
+              disabled={sending}
+              className="rounded-full bg-highlight px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+            >
+              {sending ? "Sending…" : "Send"}
+            </button>
+          )}
+          <button onClick={() => act("archive")} className="rounded-full border px-3 py-1 text-xs">Archive</button>
+          <button onClick={() => act("spam")} className="rounded-full border px-3 py-1 text-xs">Spam</button>
+          <button onClick={() => act("trash")} className="rounded-full border px-3 py-1 text-xs">Trash</button>
+          {email.folder === "trash" && (
+            <button
+              onClick={() => restoreEmail(email.id).then(onUpdated)}
+              className="rounded-full border px-3 py-1 text-xs"
+            >
+              Restore
+            </button>
+          )}
+        </div>
+        <div className="space-y-2 border-t border-black/10 dark:border-white/10 pt-3">
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Reply in a sentence. It stays a few facts."
+            className="w-full min-h-16 bg-transparent text-sm outline-none"
+          />
+          <input
+            value={forwardTo}
+            onChange={(event) => setForwardTo(event.target.value)}
+            placeholder="Forward to email, comma separated"
+            className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none"
+          />
+          <div className="flex flex-wrap gap-2">
+            <button disabled={sending} onClick={() => sendReply("reply")} className="rounded-full bg-highlight px-3 py-1 text-xs text-white">Reply</button>
+            <button disabled={sending} onClick={() => sendReply("replyAll")} className="rounded-full border px-3 py-1 text-xs">Reply all</button>
+            <button disabled={sending} onClick={() => sendReply("forward")} className="rounded-full border px-3 py-1 text-xs">Forward</button>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+              placeholder="Add a label"
+              className="flex-1 rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none"
+            />
+            <button
+              className="text-xs underline"
+              onClick={() => {
+                if (!label.trim()) return;
+                updateEmailFlags(email.id, { labels: [...(email.labels ?? []), label.trim()] }).then((updated) => {
+                  setLabel("");
+                  onUpdated(updated);
+                });
+              }}
+            >
+              Add
+            </button>
+          </div>
+        </div>
       </div>
 
       {email.chartData && <ChartRenderer chart={email.chartData} />}

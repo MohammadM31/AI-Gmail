@@ -4,6 +4,8 @@ import {
   useEffect,
   useState,
 } from "react";
+import { toast } from "sonner";
+import { connectSocket } from "./services/socketService";
 
 import {
   useUserStore,
@@ -71,6 +73,10 @@ import {
   ProjectsDashboard,
 } from "./components/Requirements/ProjectsDashboard";
 
+import {
+  ConversationProjects,
+} from "./components/Projects/ConversationProjects";
+
 import type {
   NavView,
   User,
@@ -95,7 +101,6 @@ interface ComposerState {
 // CLIENT users don't get the internal tooling.
 const CLIENT_HIDDEN_VIEWS: NavView[] = [
   "pipeline",
-  "projects",
   "requirements",
   "analytics",
 ];
@@ -221,6 +226,19 @@ function App() {
       setActiveView("compose");
     }
   }, [user, activeView]);
+
+  useEffect(() => {
+    if (!user) return;
+    const socket = connectSocket();
+    if (!socket) return;
+    const onMail = (payload: { subject?: string }) => {
+      toast.info("New mail", { description: payload.subject });
+    };
+    socket.on("email:received", onMail);
+    return () => {
+      socket.off("email:received", onMail);
+    };
+  }, [user]);
 
   const handleNavSelect = (
     view: NavView
@@ -395,8 +413,10 @@ function App() {
         );
 
       case "projects":
-        return (
+        return user?.role === "STAFF" ? (
           <ProjectsDashboard />
+        ) : (
+          <ConversationProjects />
         );
 
       case "requirements":

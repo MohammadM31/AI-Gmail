@@ -13,6 +13,10 @@ import {
   getThread,
   summarizeThread,
   readReceipt,
+  undoSend,
+  updateFlags,
+  restoreEmail,
+  replyToEmail,
 } from "../controllers/emailController";
 import { bulkSend } from "../controllers/bulkEmailController";
 import { createUploadUrl, getSignedDownloadUrl } from "../controllers/attachmentController";
@@ -34,6 +38,10 @@ router.get("/:id", getEmail);
 router.put("/:id", updateEmail);
 router.delete("/:id", deleteEmail);
 router.post("/:id/send", sendEmail);
+router.post("/:id/undo", undoSend);
+router.post("/:id/reply", replyToEmail);
+router.post("/:id/restore", restoreEmail);
+router.patch("/:id/flags", updateFlags);
 router.post("/:id/read-receipt", readReceipt);
 
 export default router;

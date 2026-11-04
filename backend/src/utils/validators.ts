@@ -23,6 +23,8 @@ export const recipientSchema = z.object({
     .string()
     .email("Invalid email format")
     .nullable(),
+
+  role: z.enum(["to", "cc", "bcc"]).optional(),
 });
 
 export const emailCreateSchema = z.object({
@@ -70,6 +72,7 @@ export const emailCreateSchema = z.object({
         "polarArea",
         "scatter",
         "bubble",
+        "facts",
       ]),
 
       title: z
@@ -86,9 +89,19 @@ export const emailCreateSchema = z.object({
       values: z.array(
         z.number()
       ),
+
+      imagePath: z.string().max(500).optional(),
+
+      facts: z.array(z.string().max(180)).max(6).optional(),
     })
     .nullable()
     .optional(),
+
+  cc: z.array(recipientSchema).max(50).optional(),
+
+  bcc: z.array(recipientSchema).max(50).optional(),
+
+  fromAlias: z.string().email().optional(),
 
   threadId: z
     .string()
@@ -137,10 +150,13 @@ const chartDataSchema = z
       "doughnut",
       "radar",
       "polarArea",
+      "facts",
     ]),
     title: z.string().max(100),
     labels: z.array(z.string()).max(20),
     values: z.array(z.number()),
+    imagePath: z.string().max(500).optional(),
+    facts: z.array(z.string().max(180)).max(6).optional(),
   })
   .nullable();
 

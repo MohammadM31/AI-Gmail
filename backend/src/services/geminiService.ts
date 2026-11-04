@@ -9,6 +9,12 @@ export interface AiProcessResult {
     title: string;
     labels: string[];
     values: number[];
+    imagePath?: string;
+    facts?: string[];
+  } | null;
+  graphic?: {
+    title?: string;
+    facts?: string[];
   } | null;
   tone: "professional" | "casual" | "urgent";
 }
@@ -107,14 +113,17 @@ Expected JSON:
   ],
   "subject": "string",
   "bulletPoints": ["string"],
-  "chart": {
-    "type": "bar | line | pie | doughnut | radar | polarArea | scatter | bubble",
-    "title": "string",
-    "labels": ["string"],
-    "values": [0]
-  },
+  "chart": null,
+  "graphic": null,
   "tone": "professional | casual | urgent"
 }
+
+Chart rules:
+- Set chart only when the message states real numbers. Use bar, line, or pie.
+- Copy those numbers. Do not invent any.
+- When there are no numbers, set chart to null.
+- Set graphic to {"title": string, "facts": [string]} only when a short visual of 2 to 4 facts (a date, a step, a comparison) would make the message easier to scan.
+- Otherwise graphic is null. Do not set both chart and graphic.
 
 Message:
 

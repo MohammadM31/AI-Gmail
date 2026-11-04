@@ -19,7 +19,7 @@ export async function getPipeline(req: Request, res: Response, next: NextFunctio
       .eq("userId", userId)
       .single();
 
-    if (error) {
+    if (error || data.projectType === "client-board") {
       return res.json({ exists: false, pipeline: null });
     }
 
@@ -467,7 +467,8 @@ export async function listPipelines(req: Request, res: Response, next: NextFunct
       .order("updatedAt", { ascending: false });
 
     if (error) throw new ApiError(500, error.message);
-    res.json(data ?? []);
+    const visible = (data ?? []).filter((row) => row.projectType !== "client-board");
+    res.json(visible);
   } catch (err) {
     next(err);
   }
