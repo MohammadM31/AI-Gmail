@@ -1,0 +1,13 @@
+---
+description: Read and update PROJECT_TODO.md as the product backlog
+alwaysApply: true
+---
+
+# Backlog
+
+`PROJECT_TODO.md` is the list of next steps for this app.
+
+- Read it before planning or implementing product work, and compare the request with Active, Archive, and Out of scope.
+- When the user asks for a feature or a next step, add it under Active if it is not already there.
+- When an item ships, delete it from Active and move it to Archive with the date.
+- Emails stay short critical facts plus an infographic. Do not add rich-text or paragraph bodies. Infographics are to be generated with matplotlib; Chart.js is the current stand-in.

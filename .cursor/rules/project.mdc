@@ -1,0 +1,32 @@
+---
+description: Architecture and conventions for the AI email app
+alwaysApply: true
+---
+
+# Project
+
+Multi-tenant AI email app. Two apps, no shared package:
+
+- `frontend/` — React 18, TypeScript, Vite, Tailwind, Zustand. Talks to the API only through `frontend/src/services/apiClient.ts`.
+- `backend/` — Express, TypeScript. Routes in `src/routes/`, handlers in `src/controllers/`, shared logic in `src/services/`.
+- `backend/prisma/schema.prisma` is the schema reference. Runtime queries use `@supabase/supabase-js`, not Prisma Client.
+
+## Boundaries
+
+- Scope every data read and write by `req.auth.organizationId` from `requireAuth` + `requireTenant`. Never trust an org id from the body or query.
+- The app JWT (`utils/jwt.ts`) carries `sub` and `organizationId` only. Roles (`CLIENT` / `STAFF`, staff roles `IT` / `ADMIN` / `SUPER_ADMIN`) come from the User row via `requireRole`.
+- Email body content is encrypted at rest (`utils/encryption.ts`). Do not log plaintext email content, tokens, or API keys.
+- Do not commit `.env` files or secrets. Config belongs in env vars read at startup.
+
+## Change style
+
+- Match existing file layout: a new API surface is route + controller (+ service if logic is reused). Validate writes with zod.
+- Keep frontend types in `frontend/src/types`. Do not duplicate API response shapes inline.
+- Prefer editing the current module over adding a parallel one.
+
+## Surgical edits
+
+- Only modify code directly related to the request. Do not fix unrelated bugs, refactor adjacent functions, or reformat untouched code.
+- Do not rename variables, move files, or change existing logic patterns unless explicitly instructed.
+- Prefer the smallest diff that achieves the goal. A feature may touch the route, controller, service, API client, and types together. Stop and ask before editing files outside that set, or before a change becomes a refactor.
+- Never delete existing comments or documentation unless the code they describe is being removed.

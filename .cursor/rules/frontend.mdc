@@ -1,0 +1,19 @@
+---
+description: Frontend UI, state, and API conventions
+globs: frontend/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend
+
+- Functional components only. Colocate a feature under `src/components/<Feature>/`.
+- Server state and auth session go through Zustand stores (`userStore`, `emailStore`). Do not introduce another state library.
+- All HTTP calls go through `services/apiClient.ts`. Send the session token from `useUserStore`; do not call `fetch` against the API from components.
+- Shared response types live in `src/types`. Add a field there when the API shape changes, then use it in `apiClient`.
+- Style with Tailwind utility classes already used in the screen. Keep the Gmail-style shell: sidebar plus main pane, dark/light via the existing theme hook.
+- Gate signed-in UI on the persisted session in `userStore`. Auth screens stay in `components/Auth`.
+
+```tsx
+// Component calls the client, not fetch.
+const emails = await listEmails();
+```
