@@ -4,4 +4,16 @@ module.exports = {
   testEnvironment: "node",
   testMatch: ["**/__tests__/**/*.test.ts"],
   setupFiles: ["<rootDir>/src/__tests__/setupEnv.ts"],
+  transform: {
+    "^.+\\.ts$": ["ts-jest", {
+      tsconfig: {
+        types: ["node", "jest"],
+        isolatedModules: true,
+      },
+    }],
+  },
+  // jsdom@29 is ESM-only under the hood and can't be loaded by Jest (CJS).
+  moduleNameMapper: {
+    "^jsdom$": "<rootDir>/src/__tests__/mocks/jsdom.ts",
+  },
 };

@@ -5,6 +5,8 @@ Full-stack scaffold matching the original spec: multi-tenant AI email composer
 inbox, analytics dashboard, dark/light theme, Socket.io, Supabase Auth,
 Docker, and CI.
 
+Next steps live in `PROJECT_TODO.md`. That file is the backlog for this app.
+
 ## What's implemented
 
 ### backend/  (Express + TypeScript + Supabase + Gemini + Socket.io)
@@ -142,6 +144,17 @@ In today's fast-paced business environment, speed-to-action is critical. However
 ### Goal
 To create an AI-powered email application that accelerates idea communication and decision-making by automatically converting rough prompts into structured, visually enhanced emails.
 
+### What an email is
+
+An email here is a short AI summary of the critical facts, plus an infographic when a visual makes those facts easier to see. It is not a paragraph, and it is not a rich-text letter. The reader should get the point without reading a block of prose.
+
+Examples:
+
+- A scheduling note becomes three facts: meeting at 7pm, possible prototype review, boss is joining. A graphic is added only when it helps those facts.
+- A results note such as "the app grew 75% and clients increased 25%" stays as short bullets, with an infographic that shows those figures.
+
+Infographics are to be generated with matplotlib (Python). The app still draws charts in the browser with Chart.js from JSON returned by the model. That view is the current stand-in, not the target.
+
 ### Core Requirements
 
 #### 1. User Input
@@ -207,7 +220,7 @@ The AI (Gemini) must automatically:
 | **Database** | Supabase (PostgreSQL) |
 | **AI** | Google Gemini API |
 | **Voice Input** | Web Speech API |
-| **Charts** | Chart.js |
+| **Charts** | Chart.js today; matplotlib infographics are the target (`PROJECT_TODO.md`) |
 | **Real-time** | Socket.io |
 | **Deployment** | Vercel (Frontend) + Render (Backend) |
 

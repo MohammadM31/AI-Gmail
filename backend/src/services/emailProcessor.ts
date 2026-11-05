@@ -2,6 +2,7 @@
 import { randomUUID } from "crypto";
 import { supabase } from "../utils/supabaseClient";
 import { encrypt, decrypt } from "../utils/encryption";
+import { logger } from "../utils/logger";
 
 export interface EmailAttachment {
   name: string;
@@ -19,7 +20,7 @@ export interface CreateEmailInput {
   chartData?: unknown;
   threadId?: string | null;
   attachments?: EmailAttachment[];
-  status?: "draft" | "sent";
+  status?: "draft" | "sent" | "pending" | "scheduled";
   sentAt?: string;
 }
 
@@ -57,10 +58,17 @@ export async function createEmail(input: CreateEmailInput) {
  * Decrypt an email row's content field. Safe to call on rows that
  * are already plaintext (e.g. legacy rows that bypassed createEmail).
  */
+const CIPHERTEXT = /^(master|key_\d+):[A-Za-z0-9+/]+=*$/;
+
 export function decryptEmailContent<T extends { content: string }>(row: T): T {
+  if (typeof row.content !== "string" || row.content.length === 0) return row;
   try {
     return { ...row, content: decrypt(row.content) };
-  } catch {
+  } catch (error) {
+    if (CIPHERTEXT.test(row.content)) {
+      logger.error({ error }, "Decryption failed; ciphertext was not returned");
+      return { ...row, content: "" };
+    }
     return row;
   }
 }
@@ -70,11 +78,12 @@ export function decryptEmailContent<T extends { content: string }>(row: T): T {
  * Use this instead of raw supabase selects whenever you need the
  * human-readable body (e.g. feeding AI prompts).
  */
-export async function getDecryptedThreadEmails(threadId: string) {
+export async function getDecryptedThreadEmails(threadId: string, senderId: string) {
   const { data, error } = await supabase
     .from("Email")
     .select("*")
     .eq("threadId", threadId)
+    .eq("senderId", senderId)
     .is("deletedAt", null)
     .order("createdAt", { ascending: true });
 

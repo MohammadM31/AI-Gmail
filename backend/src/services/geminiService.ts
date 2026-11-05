@@ -9,11 +9,58 @@ export interface AiProcessResult {
     title: string;
     labels: string[];
     values: number[];
+    imagePath?: string;
+    facts?: string[];
+  } | null;
+  graphic?: {
+    title?: string;
+    facts?: string[];
   } | null;
   tone: "professional" | "casual" | "urgent";
 }
 
-const MODEL_NAME = process.env.OPENAI_MODEL || "gpt-6-luna";
+const MODEL_NAME = (process.env.OPENAI_MODEL || "gpt-6-luna").trim();
+
+function modelSupportsReasoning(model: string): boolean {
+  return /^(gpt-[56]|o\d)/i.test(model);
+}
+
+function messageText(content: unknown): string {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (part && typeof part === "object" && "text" in part) {
+        return String((part as { text?: unknown }).text ?? "");
+      }
+      return "";
+    })
+    .join("")
+    .trim();
+}
+
+function openAiError(status: number, body: string): Error {
+  let detail = body.slice(0, 300);
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string } };
+    if (parsed.error?.message) detail = parsed.error.message;
+  } catch {
+    // The body was not JSON; keep the truncated text.
+  }
+  detail = detail.replace(/sk-[A-Za-z0-9_-]+/g, "[redacted]");
+  return new Error(`OpenAI request failed (${status}): ${detail}`);
+}
+
+function namesReferToSamePerson(contact: string, recipient: string): boolean {
+  const left = contact.trim().toLowerCase();
+  const right = recipient.trim().toLowerCase();
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const leftParts = left.split(/\s+/);
+  const rightParts = right.split(/\s+/);
+  return leftParts[0] === rightParts[0];
+}
 
 function cleanJsonResponse(text: string): string {
   return text
@@ -67,13 +114,22 @@ Expected JSON:
   "subject": "string",
   "bulletPoints": ["string"],
   "chart": {
-    "type": "bar | line | pie | doughnut | radar | polarArea | scatter | bubble",
-    "title": "string",
-    "labels": ["string"],
-    "values": [0]
+    "type": "bar",
+    "title": "Client sales",
+    "labels": ["Decrease"],
+    "values": [70]
   },
+  "graphic": null,
   "tone": "professional | casual | urgent"
 }
+
+Chart rules:
+- A percentage or other stated figure must become a chart. Use bar, line, or pie.
+- Copy only numbers written in the message. Do not invent a second figure.
+- One figure is a one-bar chart. "70% decrease in client sales" is {"type":"bar","title":"Client sales","labels":["Decrease"],"values":[70]}.
+- A time such as 7pm is not a chart value.
+- When the message has no figures, set chart to null.
+- Set graphic only when there is no chart and 2 to 4 facts would be easier to scan. Do not set both.
 
 Message:
 
@@ -82,11 +138,24 @@ Message:
 }
 
 async function completeJson(prompt: string): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error(
       "OPENAI_API_KEY is not configured on the backend. Set it in the Render environment."
     );
+  }
+
+  const body: Record<string, unknown> = {
+    model: MODEL_NAME,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: "Return only valid JSON." },
+      { role: "user", content: prompt },
+    ],
+  };
+  if (modelSupportsReasoning(MODEL_NAME)) {
+    body.reasoning_effort = "none";
+    body.max_completion_tokens = 2000;
   }
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -95,30 +164,22 @@ async function completeJson(prompt: string): Promise<string> {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: MODEL_NAME,
-      reasoning_effort: "none",
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: "Return only valid JSON." },
-        { role: "user", content: prompt },
-      ],
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(20000),
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      `OpenAI request failed (${response.status}): ${body.slice(0, 300)}`
-    );
+    throw openAiError(response.status, await response.text());
   }
 
   const data = (await response.json()) as {
-    choices?: { message?: { content?: string } }[];
+    choices?: { message?: { content?: unknown; refusal?: string | null } }[];
   };
-  const text = data.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error("OpenAI returned an empty response");
+  const message = data.choices?.[0]?.message;
+  const text = messageText(message?.content);
+  if (!text) {
+    throw new Error(message?.refusal || "OpenAI returned an empty response");
+  }
   return text;
 }
 
@@ -141,12 +202,11 @@ export async function processMessageWithAI(
     }
 
     if (contacts.length > 0 && parsed.recipients.length > 0) {
-      parsed.recipients = parsed.recipients.filter((recipient) =>
-        contacts.some(
-          (contact) =>
-            contact.toLowerCase() === recipient.name.toLowerCase()
-        )
-      );
+      parsed.recipients = parsed.recipients.filter((recipient) => {
+        const email = recipient.email?.trim();
+        if (email && email.includes("@")) return true;
+        return contacts.some((contact) => namesReferToSamePerson(contact, recipient.name));
+      });
     }
 
     return parsed;

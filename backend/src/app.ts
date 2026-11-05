@@ -20,11 +20,19 @@ import analyticsRoutes from "./routes/analyticsRoutes";
 import settingsRoutes from "./routes/settingsRoutes";
 import pipelineRoutes from "./routes/pipelineRoutes";
 import requirementsRoutes from "./routes/requirementsRoutes";
+import sprintRoutes from "./routes/sprintRoutes";
+import clientProjectRoutes from "./routes/clientProjectRoutes";
+import mailboxRoutes from "./routes/mailboxRoutes";
+import mailWebhookRoutes from "./routes/mailWebhookRoutes";
 
 validateEnvironment();
 
 export const app =
   express();
+
+// Render sits one proxy hop in front of the app. Without this, every
+// rate-limit bucket is the proxy IP.
+app.set("trust proxy", 1);
 
 app.use(
   helmet({
@@ -60,7 +68,7 @@ app.use(
           "'self'",
           process.env.SUPABASE_URL ||
             "",
-          "https://api.gemini.google.com",
+          "https://api.openai.com",
         ].filter(Boolean),
 
         fontSrc: [
@@ -116,10 +124,6 @@ const getCorsOrigins =
         frontendUrl
       );
     }
-
-    origins.push(
-      /^https:\/\/.*\.vercel\.app$/
-    );
 
     if (
       process.env
@@ -381,6 +385,26 @@ app.use(
 app.use(
   "/api/requirements",
   requirementsRoutes
+);
+
+app.use(
+  "/api/sprints",
+  sprintRoutes
+);
+
+app.use(
+  "/api/client-projects",
+  clientProjectRoutes
+);
+
+app.use(
+  "/api/mailbox",
+  mailboxRoutes
+);
+
+app.use(
+  "/api/mail",
+  mailWebhookRoutes
 );
 
 // ============================================================

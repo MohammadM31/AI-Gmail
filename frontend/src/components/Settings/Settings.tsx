@@ -3,10 +3,17 @@ import { useEffect, useState } from "react";
 import { useUserStore } from "../../stores/userStore";
 import * as api from "../../services/apiClient";
 import type { UserSettingsData } from "../../types";
+import { MailboxSettings } from "./MailboxSettings";
 
 export function Settings() {
   const user = useUserStore((s) => s.user);
   const logout = useUserStore((s) => s.logout);
+
+  // Invite codes are a staff-only feature (the API rejects CLIENT users).
+  const isStaff = user?.role === "STAFF";
+  const canRegenerateInvite =
+    isStaff &&
+    (user?.staffRole === "ADMIN" || user?.staffRole === "SUPER_ADMIN");
 
   const [settings, setSettings] = useState<UserSettingsData | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -25,6 +32,8 @@ export function Settings() {
       .catch(() => {})
       .finally(() => setLoadingSettings(false));
 
+    if (!isStaff) return;
+
     setLoadingInvite(true);
     api
       .getInviteCode()
@@ -32,8 +41,9 @@ export function Settings() {
         setInviteCode(res.inviteCode);
         setOrgName(res.organizationName);
       })
+      .catch(() => {})
       .finally(() => setLoadingInvite(false));
-  }, []);
+  }, [isStaff]);
 
   async function handleChange<K extends keyof UserSettingsData>(key: K, value: UserSettingsData[K]) {
     if (!settings) return;
@@ -79,7 +89,7 @@ export function Settings() {
   }
 
   return (
-    <div className="space-y-6 max-w-md">
+    <div className="space-y-6 max-w-xl">
       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4">
         <h3 className="text-sm font-medium mb-2">Profile</h3>
         <p className="text-sm opacity-70">{user?.name}</p>
@@ -91,6 +101,8 @@ export function Settings() {
           Sign out
         </button>
       </div>
+
+      <MailboxSettings />
 
       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4 space-y-3">
         <h3 className="text-sm font-medium">Defaults</h3>
@@ -123,6 +135,7 @@ export function Settings() {
         <p className="text-xs opacity-50">{savingSettings ? "Saving…" : "Saved automatically."}</p>
       </div>
 
+      {isStaff && (
       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4 space-y-2">
         <h3 className="text-sm font-medium">{orgName ?? "Organization"} invite code</h3>
         <p className="text-xs opacity-60">
@@ -140,14 +153,17 @@ export function Settings() {
             {copied ? "Copied" : "Copy"}
           </button>
         </div>
-        <button
-          onClick={handleRegenerateInvite}
-          disabled={loadingInvite}
-          className="text-xs underline opacity-70 hover:opacity-100"
-        >
-          Generate new code
-        </button>
+        {canRegenerateInvite && (
+          <button
+            onClick={handleRegenerateInvite}
+            disabled={loadingInvite}
+            className="text-xs underline opacity-70 hover:opacity-100"
+          >
+            Generate new code
+          </button>
+        )}
       </div>
+      )}
     </div>
   );
 }

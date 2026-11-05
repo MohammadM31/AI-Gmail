@@ -14,7 +14,7 @@ export function RateLimitIndicator() {
     // Read rate limit headers from responses
     const observer = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
-        if (entry.responseStatus === 429) {
+        if ((entry as PerformanceResourceTiming).responseStatus === 429) {
           // Rate limit hit
         }
       }

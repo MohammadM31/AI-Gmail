@@ -1,0 +1,28 @@
+---
+description: Backend API, auth, and data-access conventions
+globs: backend/**/*.ts
+alwaysApply: false
+---
+
+# Backend
+
+Protected routers mount `requireAuth`, `requireTenant`, and `apiRateLimiter` before handlers. Register static paths before `/:id`.
+
+```ts
+router.use(requireAuth, requireTenant, apiRateLimiter);
+router.post("/bulk", requireStaff, bulkSend); // before "/:id"
+router.get("/:id", getEmail);
+```
+
+## Data access
+
+- Read `userId` and `organizationId` from `req.auth`, set by `middleware/auth.ts`.
+- Filter Supabase queries with `.eq("organizationId", req.auth.organizationId)` (and owner checks where the row is user-scoped).
+- Throw `ApiError` (or `AuthorizationError`) and pass it to `next`. Do not send ad-hoc error JSON from controllers.
+- Validate request bodies with zod before writing. Do not pass `req.body` straight into an update.
+
+## AI and side effects
+
+- AI calls go through the service layer, then `auditService` and `analyticsService`.
+- Realtime emits use the org room: `org:${organizationId}`.
+- Attachment bytes stay in Supabase Storage. The API only mints signed URLs and must restrict paths to the caller's `organizationId` prefix.

@@ -1,12 +1,17 @@
 // frontend/src/App.tsx
 
 import {
+  useEffect,
   useState,
 } from "react";
+import { toast } from "sonner";
+import { connectSocket } from "./services/socketService";
 
 import {
   useUserStore,
 } from "./stores/userStore";
+
+import { API_URL } from "./services/apiClient";
 
 import {
   AuthScreen,
@@ -64,8 +69,17 @@ import {
   RequirementsDashboard,
 } from "./components/Requirements/RequirementsDashboard";
 
+import {
+  ProjectsDashboard,
+} from "./components/Requirements/ProjectsDashboard";
+
+import {
+  ConversationProjects,
+} from "./components/Projects/ConversationProjects";
+
 import type {
   NavView,
+  User,
 } from "./types";
 
 interface ComposerState {
@@ -83,10 +97,85 @@ interface ComposerState {
   saved: boolean;
 }
 
+// Views hidden from each kind of user. Staff (any staffRole) see everything;
+// CLIENT users don't get the internal tooling.
+const CLIENT_HIDDEN_VIEWS: NavView[] = [
+  "pipeline",
+  "requirements",
+  "analytics",
+];
+
+function getHiddenViews(
+  user: User | null
+): NavView[] {
+  if (user?.role === "STAFF") {
+    return [];
+  }
+
+  // CLIENT, or role not (yet) known: fail closed.
+  return CLIENT_HIDDEN_VIEWS;
+}
+
 function App() {
   const {
     user,
+    token,
+    logout,
+    setSession,
   } = useUserStore();
+
+  const [sessionChecked, setSessionChecked] = useState(false);
+
+  // A saved user without a token this server accepts used to fire a 401
+  // from every screen. Confirm the token before rendering those screens.
+  useEffect(() => {
+    if (!token) {
+      setSessionChecked(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch(`${API_URL}/api/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then(async (res) => {
+        if (res.status === 401) {
+          logout();
+          return;
+        }
+        if (!res.ok) return;
+
+        const profile = await res.json();
+        setSession(
+          {
+            id: profile.id,
+            email: profile.email,
+            name: profile.name,
+            organizationId: profile.organizationId,
+            role: profile.role,
+            staffRole: profile.staffRole ?? null,
+          },
+          token
+        );
+      })
+      .catch(() => {
+        // Leave the saved session in place if the backend is unreachable.
+      })
+      .finally(() => {
+        if (!cancelled) setSessionChecked(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, logout, setSession]);
+
+  const hiddenViews = getHiddenViews(
+    user
+  );
 
   const [
     activeView,
@@ -125,9 +214,39 @@ function App() {
     saved: false,
   });
 
+  // If the signed-in user can't see the current view (e.g. a different
+  // account signed in during the same session), fall back to Compose.
+  useEffect(() => {
+    if (
+      user &&
+      hiddenViews.includes(
+        activeView
+      )
+    ) {
+      setActiveView("compose");
+    }
+  }, [user, activeView]);
+
+  useEffect(() => {
+    if (!user) return;
+    const socket = connectSocket();
+    if (!socket) return;
+    const onMail = (payload: { subject?: string }) => {
+      toast.info("New mail", { description: payload.subject });
+    };
+    socket.on("email:received", onMail);
+    return () => {
+      socket.off("email:received", onMail);
+    };
+  }, [user]);
+
   const handleNavSelect = (
     view: NavView
   ) => {
+    if (hiddenViews.includes(view)) {
+      return;
+    }
+
     if (view !== "inbox") {
       setSelectedEmail(null);
       setSelectedThreadId(null);
@@ -136,6 +255,14 @@ function App() {
     setActiveView(view);
     setMobileNavOpen(false);
   };
+
+  if (!sessionChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm opacity-60">
+        Checking session…
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -285,6 +412,13 @@ function App() {
           <PipelineDashboard />
         );
 
+      case "projects":
+        return user?.role === "STAFF" ? (
+          <ProjectsDashboard />
+        ) : (
+          <ConversationProjects />
+        );
+
       case "requirements":
         return (
           <RequirementsDashboard />
@@ -344,6 +478,9 @@ function App() {
           onSelect={
             handleNavSelect
           }
+          hiddenViews={
+            hiddenViews
+          }
           mobileOpen={
             mobileNavOpen
           }
@@ -389,6 +526,10 @@ function App() {
                 {activeView ===
                   "pipeline" &&
                   "Pipelines"}
+
+                {activeView ===
+                  "projects" &&
+                  "Projects"}
 
                 {activeView ===
                   "requirements" &&

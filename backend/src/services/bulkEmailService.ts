@@ -57,8 +57,8 @@ export async function sendBulkEmail(input: BulkEmailInput): Promise<BulkEmailRes
           content: personalizedContent,
           bulletPoints,
           attachments,
-          status: scheduleDate ? "draft" : "sent",
-          sentAt: scheduleDate ? undefined : new Date().toISOString(),
+          status: scheduleDate ? "scheduled" : "pending",
+          sentAt: scheduleDate ?? new Date(Date.now() + 10_000).toISOString(),
         });
 
         await trackEvent(senderId, "email_sent");

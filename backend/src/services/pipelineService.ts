@@ -63,7 +63,7 @@ export async function generatePipelineFromThread(
 ): Promise<ProjectPipeline> {
   try {
     // ✅ Decrypt content before feeding to AI
-    const emails = await getDecryptedThreadEmails(threadId);
+    const emails = await getDecryptedThreadEmails(threadId, userId);
 
     if (!emails || emails.length === 0) {
       throw new Error("No emails found in this thread");

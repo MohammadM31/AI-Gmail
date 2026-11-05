@@ -1,0 +1,502 @@
+diff --git a/backend/src/middleware/requireRole.ts b/backend/src/middleware/requireRole.ts
+new file mode 100644
+index 0000000..3231297
+--- /dev/null
++++ b/backend/src/middleware/requireRole.ts
+@@ -0,0 +1,126 @@
++// backend/src/middleware/requireRole.ts
++import { NextFunction, Request, Response } from "express";
++import { supabase } from "../utils/supabaseClient";
++import { logger } from "../utils/logger";
++import { ApiError, AuthorizationError } from "./errorHandler";
++
++export type UserRole = "CLIENT" | "STAFF";
++export type StaffRole = "IT" | "ADMIN" | "SUPER_ADMIN";
++
++export interface RoleInfo {
++  role: UserRole;
++  staffRole: StaffRole | null;
++}
++
++declare global {
++  namespace Express {
++    interface Request {
++      // Populated lazily by the role middleware below so that several
++      // role checks on the same request only hit the User table once.
++      roleInfo?: RoleInfo;
++    }
++  }
++}
++
++function isUserRole(value: unknown): value is UserRole {
++  return value === "CLIENT" || value === "STAFF";
++}
++
++function isStaffRole(value: unknown): value is StaffRole {
++  return value === "IT" || value === "ADMIN" || value === "SUPER_ADMIN";
++}
++
++// The JWT only carries { sub, organizationId }, so role / staffRole have to
++// come from the User table. Result is cached on `req.roleInfo`.
++async function loadRoleInfo(req: Request): Promise<RoleInfo> {
++  if (req.roleInfo) return req.roleInfo;
++
++  if (!req.auth?.userId) {
++    throw new ApiError(401, "Not authenticated");
++  }
++
++  const { data, error } = await supabase
++    .from("User")
++    .select("role, staffRole")
++    .eq("id", req.auth.userId)
++    .single();
++
++  if (error || !data) {
++    logger.warn(
++      { userId: req.auth.userId, error: error?.message },
++      "Role lookup failed: user not found"
++    );
++    throw new AuthorizationError("User account not found");
++  }
++
++  if (!isUserRole(data.role)) {
++    logger.warn(
++      { userId: req.auth.userId, role: data.role },
++      "Role lookup failed: unrecognised role"
++    );
++    throw new AuthorizationError("User has no valid role");
++  }
++
++  const info: RoleInfo = {
++    role: data.role,
++    staffRole: isStaffRole(data.staffRole) ? data.staffRole : null,
++  };
++
++  req.roleInfo = info;
++  return info;
++}
++
++/** Rejects anyone whose User.role is not STAFF. */
++export async function requireStaff(
++  req: Request,
++  _res: Response,
++  next: NextFunction
++) {
++  try {
++    const { role } = await loadRoleInfo(req);
++    if (role !== "STAFF") {
++      throw new AuthorizationError("Staff access required");
++    }
++    next();
++  } catch (err) {
++    next(err);
++  }
++}
++
++/**
++ * Rejects anyone who is not STAFF with one of the given staffRoles.
++ * Intended to be chained after requireStaff, but is safe on its own:
++ * a CLIENT has no staffRole and is always rejected.
++ */
++export function requireRole(roles: StaffRole[]) {
++  return async (req: Request, _res: Response, next: NextFunction) => {
++    try {
++      const { role, staffRole } = await loadRoleInfo(req);
++      if (role !== "STAFF" || !staffRole || !roles.includes(staffRole)) {
++        throw new AuthorizationError(
++          `Requires one of the following staff roles: ${roles.join(", ")}`
++        );
++      }
++      next();
++    } catch (err) {
++      next(err);
++    }
++  };
++}
++
++/** Rejects anyone whose User.role is not CLIENT. */
++export async function requireClient(
++  req: Request,
++  _res: Response,
++  next: NextFunction
++) {
++  try {
++    const { role } = await loadRoleInfo(req);
++    if (role !== "CLIENT") {
++      throw new AuthorizationError("Client access required");
++    }
++    next();
++  } catch (err) {
++    next(err);
++  }
++}
+diff --git a/backend/src/routes/authRoutes.ts b/backend/src/routes/authRoutes.ts
+index 6fd8ac7..27d343b 100644
+--- a/backend/src/routes/authRoutes.ts
++++ b/backend/src/routes/authRoutes.ts
+@@ -9,6 +9,7 @@ import {
+ } from "../controllers/authController";
+ import { requireAuth } from "../middleware/auth";
+ import { requireTenant } from "../middleware/tenant";
++import { requireStaff, requireRole } from "../middleware/requireRole";
+ 
+ const router = Router();
+ 
+@@ -17,7 +18,14 @@ router.post("/login", login);
+ router.post("/logout", logout);
+ router.get("/me", requireAuth, me);
+ 
+-router.get("/org/invite-code", requireAuth, requireTenant, getInviteCode);
+-router.post("/org/invite-code/regenerate", requireAuth, requireTenant, regenerateInviteCode);
++router.get("/org/invite-code", requireAuth, requireTenant, requireStaff, getInviteCode);
++router.post(
++  "/org/invite-code/regenerate",
++  requireAuth,
++  requireTenant,
++  requireStaff,
++  requireRole(["ADMIN", "SUPER_ADMIN"]),
++  regenerateInviteCode
++);
+ 
+ export default router;
+diff --git a/backend/src/routes/pipelineRoutes.ts b/backend/src/routes/pipelineRoutes.ts
+index 65d25bd..0055279 100644
+--- a/backend/src/routes/pipelineRoutes.ts
++++ b/backend/src/routes/pipelineRoutes.ts
+@@ -2,6 +2,7 @@
+ import { Router } from "express";
+ import { requireAuth } from "../middleware/auth";
+ import { requireTenant } from "../middleware/tenant";
++import { requireStaff } from "../middleware/requireRole";
+ import {
+   getPipeline,
+   generatePipeline,
+@@ -20,10 +21,10 @@ router.use(requireAuth, requireTenant);
+ router.get("/metrics", getPipelineMetrics);
+ router.get("/notifications", getPipelineNotifications);
+ router.get("/:contactId", getPipeline);
+-router.post("/:contactId/generate", generatePipeline);
+-router.post("/:contactId/update", updatePipeline);
+-router.put("/:pipelineId/stage/:stageId", updatePipelineStage);
+-router.put("/:pipelineId/stages", updatePipelineStages);
+-router.post("/:pipelineId/stage/:stageId/time", updateStageTimeTracking);
++router.post("/:contactId/generate", requireStaff, generatePipeline);
++router.post("/:contactId/update", requireStaff, updatePipeline);
++router.put("/:pipelineId/stage/:stageId", requireStaff, updatePipelineStage);
++router.put("/:pipelineId/stages", requireStaff, updatePipelineStages);
++router.post("/:pipelineId/stage/:stageId/time", requireStaff, updateStageTimeTracking);
+ router.post("/suggest-template", suggestPipelineTemplate);
+ export default router;
+\ No newline at end of file
+diff --git a/backend/src/routes/requirementsRoutes.ts b/backend/src/routes/requirementsRoutes.ts
+index 70dab57..97be11f 100644
+--- a/backend/src/routes/requirementsRoutes.ts
++++ b/backend/src/routes/requirementsRoutes.ts
+@@ -1,6 +1,7 @@
+ import { Router } from "express";
+ import { requireAuth } from "../middleware/auth";
+ import { requireTenant } from "../middleware/tenant";
++import { requireStaff, requireRole } from "../middleware/requireRole";
+ 
+ import {
+   listProjects,
+@@ -18,23 +19,30 @@ const router = Router();
+ 
+ router.use(requireAuth, requireTenant);
+ 
+-router.get("/projects", listProjects);
+-router.post("/projects", createProject);
++router.get("/projects", requireStaff, listProjects);
++router.post("/projects", requireStaff, createProject);
+ 
+-router.post("/analyze", analyzeRequirements);
++router.post("/analyze", requireStaff, analyzeRequirements);
+ 
+-router.get("/requirements", listRequirements);
++router.get("/requirements", requireStaff, listRequirements);
+ 
+-router.post("/proposals", createProposal);
++router.post("/proposals", requireStaff, createProposal);
+ 
+-router.get("/modifications", listModifications);
++router.get("/modifications", requireStaff, listModifications);
+ 
+ router.patch(
+   "/modifications/:modificationId/review",
++  requireStaff,
++  requireRole(["IT", "ADMIN", "SUPER_ADMIN"]),
+   reviewModification
+ );
+ 
+ // NEW: manual sweeper trigger (staff only)
+-router.post("/run-sweeper", runSweeper);
++router.post(
++  "/run-sweeper",
++  requireStaff,
++  requireRole(["ADMIN", "SUPER_ADMIN"]),
++  runSweeper
++);
+ 
+ export default router;
+\ No newline at end of file
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 88dc825..7b20ccb 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -1,6 +1,7 @@
+ // frontend/src/App.tsx
+ 
+ import {
++  useEffect,
+   useState,
+ } from "react";
+ 
+@@ -66,6 +67,7 @@ import {
+ 
+ import type {
+   NavView,
++  User,
+ } from "./types";
+ 
+ interface ComposerState {
+@@ -83,11 +85,34 @@ interface ComposerState {
+   saved: boolean;
+ }
+ 
++// Views hidden from each kind of user. Staff (any staffRole) see everything;
++// CLIENT users don't get the internal tooling.
++const CLIENT_HIDDEN_VIEWS: NavView[] = [
++  "pipeline",
++  "requirements",
++  "analytics",
++];
++
++function getHiddenViews(
++  user: User | null
++): NavView[] {
++  if (user?.role === "STAFF") {
++    return [];
++  }
++
++  // CLIENT, or role not (yet) known: fail closed.
++  return CLIENT_HIDDEN_VIEWS;
++}
++
+ function App() {
+   const {
+     user,
+   } = useUserStore();
+ 
++  const hiddenViews = getHiddenViews(
++    user
++  );
++
+   const [
+     activeView,
+     setActiveView,
+@@ -125,9 +150,26 @@ function App() {
+     saved: false,
+   });
+ 
++  // If the signed-in user can't see the current view (e.g. a different
++  // account signed in during the same session), fall back to Compose.
++  useEffect(() => {
++    if (
++      user &&
++      hiddenViews.includes(
++        activeView
++      )
++    ) {
++      setActiveView("compose");
++    }
++  }, [user, activeView]);
++
+   const handleNavSelect = (
+     view: NavView
+   ) => {
++    if (hiddenViews.includes(view)) {
++      return;
++    }
++
+     if (view !== "inbox") {
+       setSelectedEmail(null);
+       setSelectedThreadId(null);
+@@ -344,6 +386,9 @@ function App() {
+           onSelect={
+             handleNavSelect
+           }
++          hiddenViews={
++            hiddenViews
++          }
+           mobileOpen={
+             mobileNavOpen
+           }
+diff --git a/frontend/src/components/Requirements/RequirementsDashboard.tsx b/frontend/src/components/Requirements/RequirementsDashboard.tsx
+index beb0eb6..78531a2 100644
+--- a/frontend/src/components/Requirements/RequirementsDashboard.tsx
++++ b/frontend/src/components/Requirements/RequirementsDashboard.tsx
+@@ -1,5 +1,7 @@
+ import { useEffect, useState } from "react";
+ 
++import { useUserStore } from "../../stores/userStore";
++
+ import {
+   listRequirements,
+   listModifications,
+@@ -13,6 +15,9 @@ import type {
+ } from "../../types";
+ 
+ export function RequirementsDashboard() {
++  const user = useUserStore((s) => s.user);
++  const isStaff = user?.role === "STAFF";
++
+   const [requirements, setRequirements] =
+     useState<Requirement[]>([]);
+ 
+@@ -402,8 +407,9 @@ export function RequirementsDashboard() {
+                   </div>
+                 )}
+ 
+-                {modification.status ===
+-                  "PENDING_REVIEW" && (
++                {isStaff &&
++                  modification.status ===
++                    "PENDING_REVIEW" && (
+                   <div className="mt-6 pt-5 border-t border-black/10 dark:border-white/10">
+ 
+                     <div className="text-xs opacity-50 mb-3">
+diff --git a/frontend/src/components/Settings/Settings.tsx b/frontend/src/components/Settings/Settings.tsx
+index 58681bf..0724a92 100644
+--- a/frontend/src/components/Settings/Settings.tsx
++++ b/frontend/src/components/Settings/Settings.tsx
+@@ -8,6 +8,12 @@ export function Settings() {
+   const user = useUserStore((s) => s.user);
+   const logout = useUserStore((s) => s.logout);
+ 
++  // Invite codes are a staff-only feature (the API rejects CLIENT users).
++  const isStaff = user?.role === "STAFF";
++  const canRegenerateInvite =
++    isStaff &&
++    (user?.staffRole === "ADMIN" || user?.staffRole === "SUPER_ADMIN");
++
+   const [settings, setSettings] = useState<UserSettingsData | null>(null);
+   const [savingSettings, setSavingSettings] = useState(false);
+   const [loadingSettings, setLoadingSettings] = useState(true);
+@@ -25,6 +31,8 @@ export function Settings() {
+       .catch(() => {})
+       .finally(() => setLoadingSettings(false));
+ 
++    if (!isStaff) return;
++
+     setLoadingInvite(true);
+     api
+       .getInviteCode()
+@@ -32,8 +40,9 @@ export function Settings() {
+         setInviteCode(res.inviteCode);
+         setOrgName(res.organizationName);
+       })
++      .catch(() => {})
+       .finally(() => setLoadingInvite(false));
+-  }, []);
++  }, [isStaff]);
+ 
+   async function handleChange<K extends keyof UserSettingsData>(key: K, value: UserSettingsData[K]) {
+     if (!settings) return;
+@@ -123,6 +132,7 @@ export function Settings() {
+         <p className="text-xs opacity-50">{savingSettings ? "Saving…" : "Saved automatically."}</p>
+       </div>
+ 
++      {isStaff && (
+       <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-4 space-y-2">
+         <h3 className="text-sm font-medium">{orgName ?? "Organization"} invite code</h3>
+         <p className="text-xs opacity-60">
+@@ -140,14 +150,17 @@ export function Settings() {
+             {copied ? "Copied" : "Copy"}
+           </button>
+         </div>
+-        <button
+-          onClick={handleRegenerateInvite}
+-          disabled={loadingInvite}
+-          className="text-xs underline opacity-70 hover:opacity-100"
+-        >
+-          Generate new code
+-        </button>
++        {canRegenerateInvite && (
++          <button
++            onClick={handleRegenerateInvite}
++            disabled={loadingInvite}
++            className="text-xs underline opacity-70 hover:opacity-100"
++          >
++            Generate new code
++          </button>
++        )}
+       </div>
++      )}
+     </div>
+   );
+ }
+\ No newline at end of file
+diff --git a/frontend/src/components/Sidebar/Sidebar.tsx b/frontend/src/components/Sidebar/Sidebar.tsx
+index 5bde6ee..5987ee4 100644
+--- a/frontend/src/components/Sidebar/Sidebar.tsx
++++ b/frontend/src/components/Sidebar/Sidebar.tsx
+@@ -54,6 +54,9 @@ interface SidebarProps {
+     view: NavView
+   ) => void;
+ 
++  // Views the current user is not allowed to see (e.g. CLIENT users).
++  hiddenViews?: NavView[];
++
+   mobileOpen?: boolean;
+ 
+   onMobileClose?: () => void;
+@@ -62,16 +65,24 @@ interface SidebarProps {
+ function NavList({
+   active,
+   onSelect,
++  hiddenViews = [],
+ }: {
+   active: NavView;
+ 
+   onSelect: (
+     view: NavView
+   ) => void;
++
++  hiddenViews?: NavView[];
+ }) {
+   return (
+     <>
+-      {NAV_ITEMS.map(
++      {NAV_ITEMS.filter(
++        (item) =>
++          !hiddenViews.includes(
++            item.key
++          )
++      ).map(
+         (item) => (
+           <button
+             key={item.key}
+@@ -97,6 +108,7 @@ function NavList({
+ export function Sidebar({
+   active,
+   onSelect,
++  hiddenViews,
+   mobileOpen,
+   onMobileClose,
+ }: SidebarProps) {
+@@ -113,6 +125,7 @@ export function Sidebar({
+         <NavList
+           active={active}
+           onSelect={onSelect}
++          hiddenViews={hiddenViews}
+         />
+ 
+       </aside>
+@@ -156,6 +169,7 @@ export function Sidebar({
+                 onSelect(view);
+                 onMobileClose?.();
+               }}
++              hiddenViews={hiddenViews}
+             />
+ 
+           </aside>

@@ -180,7 +180,7 @@ export async function sendScheduledTemplates(req: Request, res: Response, next: 
             bulletPoints: ["This email was sent automatically from a template."],
             chartData: null,
             attachments: [],
-            status: "sent",
+            status: "pending",
             threadId,
             sentAt: now.toISOString(),
           });
@@ -252,7 +252,7 @@ export async function sendTemplateNow(req: Request, res: Response, next: NextFun
         bulletPoints: ["This email was sent manually from a template."],
         chartData: null,
         attachments: [],
-        status: "sent",
+        status: "pending",
         threadId,
         sentAt: new Date().toISOString(),
       });

@@ -19,7 +19,7 @@ export async function getPipeline(req: Request, res: Response, next: NextFunctio
       .eq("userId", userId)
       .single();
 
-    if (error) {
+    if (error || data.projectType === "client-board") {
       return res.json({ exists: false, pipeline: null });
     }
 
@@ -452,6 +452,117 @@ export async function suggestPipelineTemplate(
 
     const result = await suggestPipelineTemplateService(conversation);
     res.json({ template: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** GET /api/pipeline — pipelines owned by the signed-in user. */
+export async function listPipelines(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { data, error } = await supabase
+      .from("Pipeline")
+      .select("*")
+      .eq("userId", req.auth!.userId)
+      .order("updatedAt", { ascending: false });
+
+    if (error) throw new ApiError(500, error.message);
+    const visible = (data ?? []).filter((row) => row.projectType !== "client-board");
+    res.json(visible);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function assertPipelineOwner(pipelineId: string, userId: string) {
+  const { data, error } = await supabase
+    .from("Pipeline")
+    .select("id")
+    .eq("id", pipelineId)
+    .eq("userId", userId)
+    .maybeSingle();
+
+  if (error) throw new ApiError(500, error.message);
+  if (!data) throw new ApiError(404, "Pipeline not found");
+}
+
+/** GET /api/pipeline/:pipelineId/comments */
+export async function listPipelineComments(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { pipelineId } = req.params;
+    await assertPipelineOwner(pipelineId, req.auth!.userId);
+
+    const { data, error } = await supabase
+      .from("PipelineComments")
+      .select("*, User:userId (id, email, name)")
+      .eq("pipelineId", pipelineId)
+      .order("createdAt", { ascending: false });
+
+    if (error) throw new ApiError(500, error.message);
+
+    res.json(
+      (data ?? []).map((comment: any) => ({
+        ...comment,
+        userEmail: comment.User?.email,
+        userName: comment.User?.name,
+      }))
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** POST /api/pipeline/:pipelineId/comments */
+export async function addPipelineComment(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { pipelineId } = req.params;
+    const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
+    if (!content) throw new ApiError(400, "content is required");
+    if (content.length > 2000) throw new ApiError(400, "content is too long");
+
+    await assertPipelineOwner(pipelineId, req.auth!.userId);
+
+    const { data, error } = await supabase
+      .from("PipelineComments")
+      .insert({
+        pipelineId,
+        userId: req.auth!.userId,
+        content,
+        createdAt: new Date().toISOString(),
+      })
+      .select("*, User:userId (id, email, name)")
+      .single();
+
+    if (error) throw new ApiError(500, error.message);
+
+    res.status(201).json({
+      success: true,
+      comment: {
+        ...data,
+        userEmail: data.User?.email,
+        userName: data.User?.name,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** DELETE /api/pipeline/:pipelineId/comments/:commentId */
+export async function deletePipelineComment(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { pipelineId, commentId } = req.params;
+    await assertPipelineOwner(pipelineId, req.auth!.userId);
+
+    const { error } = await supabase
+      .from("PipelineComments")
+      .delete()
+      .eq("id", commentId)
+      .eq("pipelineId", pipelineId)
+      .eq("userId", req.auth!.userId);
+
+    if (error) throw new ApiError(500, error.message);
+    res.status(204).send();
   } catch (err) {
     next(err);
   }

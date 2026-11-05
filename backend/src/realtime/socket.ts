@@ -30,6 +30,7 @@ export function initSocket(httpServer: HttpServer) {
   io.on("connection", (socket) => {
     const room = `org:${socket.data.organizationId}`;
     socket.join(room);
+    socket.join(`user:${socket.data.userId}`);
     logger.debug({ userId: socket.data.userId, room }, "socket connected");
 
     socket.on("disconnect", () => {

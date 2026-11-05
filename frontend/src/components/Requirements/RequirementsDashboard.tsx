@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 
+import { useUserStore } from "../../stores/userStore";
+
 import {
+  listProjects,
   listRequirements,
   listModifications,
   createModificationProposal,
@@ -8,16 +11,30 @@ import {
 } from "../../services/apiClient";
 
 import type {
+  Project,
   Requirement,
   Modification,
 } from "../../types";
 
+// Value of the Project filter for requirements that aren't linked to a project.
+const NO_PROJECT = "__none__";
+
 export function RequirementsDashboard() {
+  const user = useUserStore((s) => s.user);
+  const isStaff = user?.role === "STAFF";
+
   const [requirements, setRequirements] =
     useState<Requirement[]>([]);
 
   const [modifications, setModifications] =
     useState<Modification[]>([]);
+
+  const [projects, setProjects] =
+    useState<Project[]>([]);
+
+  // "" = all projects, NO_PROJECT = unassigned, otherwise a project id.
+  const [projectFilter, setProjectFilter] =
+    useState("");
 
   const [loading, setLoading] =
     useState(true);
@@ -36,9 +53,11 @@ export function RequirementsDashboard() {
       const [
         requirementsData,
         modificationsData,
+        projectsData,
       ] = await Promise.all([
         listRequirements(),
         listModifications(),
+        listProjects(),
       ]);
 
       setRequirements(
@@ -47,6 +66,10 @@ export function RequirementsDashboard() {
 
       setModifications(
         modificationsData
+      );
+
+      setProjects(
+        projectsData
       );
     } catch (err) {
       setError(
@@ -120,6 +143,26 @@ export function RequirementsDashboard() {
     }
   }
 
+  const visibleRequirements =
+    requirements.filter(
+      (requirement) =>
+        projectFilter === "" ||
+        (projectFilter === NO_PROJECT
+          ? !requirement.projectId
+          : requirement.projectId ===
+            projectFilter)
+    );
+
+  // Modifications always belong to a project, so the "no project"
+  // filter has none to show.
+  const visibleModifications =
+    modifications.filter(
+      (modification) =>
+        projectFilter === "" ||
+        modification.projectId ===
+          projectFilter
+    );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -139,6 +182,47 @@ export function RequirementsDashboard() {
         </div>
       )}
 
+      <div className="flex items-center gap-2">
+        <label
+          htmlFor="requirements-project-filter"
+          className="text-xs opacity-60"
+        >
+          Project
+        </label>
+
+        <select
+          id="requirements-project-filter"
+          value={projectFilter}
+          onChange={(e) =>
+            setProjectFilter(
+              e.target.value
+            )
+          }
+          className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm"
+        >
+          <option value="">
+            All projects
+          </option>
+
+          {projects.map((project) => (
+            <option
+              key={project.id}
+              value={project.id}
+            >
+              {project.name}
+              {project.status ===
+              "ARCHIVED"
+                ? " (archived)"
+                : ""}
+            </option>
+          ))}
+
+          <option value={NO_PROJECT}>
+            No project
+          </option>
+        </select>
+      </div>
+
       {/* ================================================== */}
       {/* REQUIREMENTS */}
       {/* ================================================== */}
@@ -157,19 +241,21 @@ export function RequirementsDashboard() {
           </div>
 
           <span className="text-xs opacity-50">
-            {requirements.length} requirements
+            {visibleRequirements.length} requirements
           </span>
         </div>
 
         <div className="space-y-4">
 
-          {requirements.length === 0 && (
+          {visibleRequirements.length === 0 && (
             <div className="border border-dashed border-black/10 dark:border-white/10 rounded-xl p-10 text-center text-sm opacity-50">
-              No requirements have been extracted yet.
+              {projectFilter === ""
+                ? "No requirements have been extracted yet."
+                : "No requirements match this project."}
             </div>
           )}
 
-          {requirements.map(
+          {visibleRequirements.map(
             (requirement) => (
               <div
                 key={requirement.id}
@@ -309,7 +395,7 @@ export function RequirementsDashboard() {
 
           <span className="text-xs opacity-50">
             {
-              modifications.filter(
+              visibleModifications.filter(
                 (modification) =>
                   modification.status ===
                   "PENDING_REVIEW"
@@ -321,13 +407,15 @@ export function RequirementsDashboard() {
 
         <div className="space-y-4">
 
-          {modifications.length === 0 && (
+          {visibleModifications.length === 0 && (
             <div className="border border-dashed border-black/10 dark:border-white/10 rounded-xl p-10 text-center text-sm opacity-50">
-              No modification proposals exist yet.
+              {projectFilter === ""
+                ? "No modification proposals exist yet."
+                : "No modification proposals match this project."}
             </div>
           )}
 
-          {modifications.map(
+          {visibleModifications.map(
             (modification) => (
               <div
                 key={modification.id}
@@ -402,8 +490,9 @@ export function RequirementsDashboard() {
                   </div>
                 )}
 
-                {modification.status ===
-                  "PENDING_REVIEW" && (
+                {isStaff &&
+                  modification.status ===
+                    "PENDING_REVIEW" && (
                   <div className="mt-6 pt-5 border-t border-black/10 dark:border-white/10">
 
                     <div className="text-xs opacity-50 mb-3">

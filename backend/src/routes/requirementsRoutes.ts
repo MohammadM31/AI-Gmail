@@ -1,10 +1,15 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { requireTenant } from "../middleware/tenant";
+import { requireStaff, requireRole } from "../middleware/requireRole";
 
 import {
   listProjects,
+  listProjectsSummary,
+  listClients,
   createProject,
+  updateProject,
+  syncProjectsFromMail,
   analyzeRequirements,
   listRequirements,
   createProposal,
@@ -18,23 +23,35 @@ const router = Router();
 
 router.use(requireAuth, requireTenant);
 
-router.get("/projects", listProjects);
-router.post("/projects", createProject);
+router.get("/projects", requireStaff, listProjects);
+router.post("/projects", requireStaff, createProject);
+router.post("/projects/sync", requireStaff, syncProjectsFromMail);
+router.patch("/projects/:id", requireStaff, updateProject);
+router.get("/projects/summary", requireStaff, listProjectsSummary);
 
-router.post("/analyze", analyzeRequirements);
+router.get("/clients", requireStaff, listClients);
 
-router.get("/requirements", listRequirements);
+router.post("/analyze", requireStaff, analyzeRequirements);
 
-router.post("/proposals", createProposal);
+router.get("/requirements", requireStaff, listRequirements);
 
-router.get("/modifications", listModifications);
+router.post("/proposals", requireStaff, createProposal);
+
+router.get("/modifications", requireStaff, listModifications);
 
 router.patch(
   "/modifications/:modificationId/review",
+  requireStaff,
+  requireRole(["IT", "ADMIN", "SUPER_ADMIN"]),
   reviewModification
 );
 
 // NEW: manual sweeper trigger (staff only)
-router.post("/run-sweeper", runSweeper);
+router.post(
+  "/run-sweeper",
+  requireStaff,
+  requireRole(["ADMIN", "SUPER_ADMIN"]),
+  runSweeper
+);
 
 export default router;

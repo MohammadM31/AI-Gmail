@@ -5,17 +5,19 @@ import { useDebounce } from "../../hooks/useDebounce";
 import { Skeleton, SkeletonList } from "../Shared/Skeleton";
 import { toast } from "sonner";
 import type { EmailItem } from "../../types";
-import { listEmails } from "../../services/apiClient";
+import { getMailbox, listEmails, updateEmailFlags } from "../../services/apiClient";
 import { useUserStore } from "../../stores/userStore";
 
 // ✅ Memoized Email Card
 const EmailCard = memo(function EmailCard({
   email,
   onSelect,
+  onStar,
   currentUserId,
 }: {
   email: EmailItem;
   onSelect: (email: EmailItem) => void;
+  onStar: (email: EmailItem) => void;
   currentUserId: string | null;
 }) {
   const getInitials = (email: EmailItem) => {
@@ -28,6 +30,7 @@ const EmailCard = memo(function EmailCard({
   };
 
   const getSenderName = (email: EmailItem) => {
+    if (email.from?.name) return email.from.name;
     if (email.senderId === currentUserId) return "You";
     const firstRecipient = email.recipients[0];
     return firstRecipient?.name || "Unknown";
@@ -78,6 +81,18 @@ const EmailCard = memo(function EmailCard({
       onClick={() => onSelect(email)}
       className="w-full text-left px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition flex items-start gap-3"
     >
+      <span
+        role="button"
+        aria-label={email.starred ? "Unstar" : "Star"}
+        onClick={(event) => {
+          event.stopPropagation();
+          event.preventDefault();
+          onStar(email);
+        }}
+        className={`mt-2 text-sm ${email.starred ? "text-highlight" : "opacity-30"}`}
+      >
+        ★
+      </span>
       <div className="w-10 h-10 rounded-full bg-accent-light/10 dark:bg-accent-dark/40 flex items-center justify-center text-sm font-semibold shrink-0">
         {getInitials(email)}
       </div>
@@ -85,7 +100,7 @@ const EmailCard = memo(function EmailCard({
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="font-medium text-sm truncate">
+            <span className={`text-sm truncate ${email.unread ? "font-semibold" : "font-medium"}`}>
               {getSenderName(email)}
             </span>
             <span className="text-xs opacity-50 truncate">
@@ -124,6 +139,10 @@ const EmailCard = memo(function EmailCard({
 // ✅ Main EmailList Component
 export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (email: EmailItem) => void }) {
   const [emails, setEmails] = useState<EmailItem[]>([]);
+  const [folder, setFolder] = useState<"inbox" | "sent" | "drafts" | "scheduled" | "spam" | "archive" | "trash" | "starred">("inbox");
+  const [unread, setUnread] = useState(0);
+  const [mailboxUserId, setMailboxUserId] = useState("");
+  const [sharedMailboxes, setSharedMailboxes] = useState<{ userId: string; name: string; email: string }[]>([]);
   const [query, setQuery] = useState("");
   const [filterType, setFilterType] = useState<"all" | "subject" | "recipient" | "status">("all");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "subject-asc" | "subject-desc" | "status" | "recipient">("newest");
@@ -187,6 +206,8 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
           params.append("dateTo", dateTo);
         }
 
+        params.append("folder", folder);
+        if (mailboxUserId) params.append("mailboxUserId", mailboxUserId);
         params.append("sortBy", sortBy);
         params.append("page", String(reset ? 1 : page + 1));
         params.append("pageSize", "20");
@@ -200,6 +221,7 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
         }
 
         setTotal(response.total);
+        setUnread(response.unread ?? 0);
         setHasMore(response.items.length < response.total);
         setPage(reset ? 1 : page + 1);
       } catch (err) {
@@ -210,13 +232,19 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
         setLoading(false);
       }
     },
-    [debouncedQuery, filterType, sortBy, statusFilter, dateRange, dateFrom, dateTo, page]
+    [debouncedQuery, filterType, sortBy, statusFilter, dateRange, dateFrom, dateTo, page, folder, mailboxUserId]
   );
 
   // ✅ Initial load and when filters change
   useEffect(() => {
     load(true);
   }, [load]);
+
+  useEffect(() => {
+    getMailbox()
+      .then((mailbox) => setSharedMailboxes(mailbox.access))
+      .catch(() => {});
+  }, []);
 
   // ✅ Auto-refresh every 30 seconds
   useEffect(() => {
@@ -239,7 +267,18 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
   const emailList = useMemo(() => {
     return emails.map((email) => (
       <li key={email.id}>
-        <EmailCard email={email} onSelect={onSelect} currentUserId={currentUser?.id || null} />
+        <EmailCard
+          email={email}
+          onSelect={onSelect}
+          currentUserId={currentUser?.id || null}
+          onStar={(item) => {
+            const next = !item.starred;
+            setEmails((current) => current.map((row) => (row.id === item.id ? { ...row, starred: next } : row)));
+            updateEmailFlags(item.id, { starred: next }).catch(() => {
+              setEmails((current) => current.map((row) => (row.id === item.id ? { ...row, starred: item.starred } : row)));
+            });
+          }}
+        />
       </li>
     ));
   }, [emails, onSelect, currentUser]);
@@ -253,14 +292,52 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
     }
   };
 
+  const folders = [
+    ["inbox", unread > 0 ? `Inbox ${unread}` : "Inbox"],
+    ["sent", "Sent"],
+    ["drafts", "Drafts"],
+    ["scheduled", "Scheduled"],
+    ["spam", "Spam"],
+    ["archive", "Archive"],
+    ["trash", "Trash"],
+    ["starred", "Starred"],
+  ] as const;
+
   return (
     <div className="space-y-4">
+      {sharedMailboxes.length > 0 && (
+        <select
+          className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1.5 text-sm"
+          value={mailboxUserId}
+          onChange={(event) => setMailboxUserId(event.target.value)}
+        >
+          <option value="">My mailbox</option>
+          {sharedMailboxes.map((mailbox) => (
+            <option key={mailbox.userId} value={mailbox.userId}>
+              {mailbox.name || mailbox.email}
+            </option>
+          ))}
+        </select>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {folders.map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setFolder(id)}
+            className={`rounded-full px-3 py-1 text-xs ${
+              folder === id ? "bg-highlight text-white" : "border border-black/10 dark:border-white/10"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {/* Search and Filters Bar */}
       <div className="flex flex-wrap gap-2 items-center">
         <div className="flex-1 min-w-[200px]">
           <input
             className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none focus:border-highlight transition"
-            placeholder="Search emails… (Ctrl+K to focus)"
+            placeholder="Search… from: to: has:attachment after:2026-01-01"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && load(true)}
