@@ -27,6 +27,7 @@ export function makeQuery<T>(result: QueryResult<T>) {
   query.limit = jest.fn(chain);
   query.range = jest.fn(chain);
   query.or = jest.fn(chain);
+  query.in = jest.fn(chain);
   query.is = jest.fn(chain);
   query.textSearch = jest.fn(chain);
   query.single = jest.fn(() => Promise.resolve(result));

@@ -8,6 +8,8 @@ import {
   listProjectsSummary,
   listClients,
   createProject,
+  updateProject,
+  syncProjectsFromMail,
   analyzeRequirements,
   listRequirements,
   createProposal,
@@ -23,6 +25,8 @@ router.use(requireAuth, requireTenant);
 
 router.get("/projects", requireStaff, listProjects);
 router.post("/projects", requireStaff, createProject);
+router.post("/projects/sync", requireStaff, syncProjectsFromMail);
+router.patch("/projects/:id", requireStaff, updateProject);
 router.get("/projects/summary", requireStaff, listProjectsSummary);
 
 router.get("/clients", requireStaff, listClients);

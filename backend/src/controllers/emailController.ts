@@ -14,6 +14,7 @@ import { listMailbox, presentEmail, readableEmail, rememberAddresses, setFlags }
 import { loadMailbox, mutateMailbox } from "../services/mailboxStore";
 import { queueSend } from "../services/mailDeliveryService";
 import { quotedBullets, type Address, type MailFolder } from "../services/mailboxLogic";
+import { noteProjectEmail } from "../services/projectDetailSync";
 
 // Export createEmail for templateController
 export { createEmailService as createEmail };
@@ -135,6 +136,7 @@ export async function createEmailHandler(
       await trackEvent(req.auth!.userId, "chart_generated");
     }
 
+    noteProjectEmail(req.auth!.organizationId, input.subject, input.bulletPoints);
     res.status(201).json(email);
   } catch (err) {
     next(err);
@@ -308,6 +310,13 @@ export async function updateEmail(req: Request, res: Response, next: NextFunctio
       .single();
 
     if (error || !data) throw new ApiError(404, "Email not found");
+    if (input.subject || input.bulletPoints) {
+      noteProjectEmail(
+        req.auth!.organizationId,
+        input.subject ?? String(data.subject ?? ""),
+        input.bulletPoints ?? (Array.isArray(data.bulletPoints) ? data.bulletPoints.map(String) : [])
+      );
+    }
     res.json(decryptEmailContent(data));
   } catch (err) {
     next(err);
@@ -445,6 +454,7 @@ ${input.message}`
     await mutateMailbox(req.auth!.organizationId, actor.id, (doc) => {
       doc.emails[email.id] = { folder: "drafts", direction: "out", quoted, unread: false };
     });
+    noteProjectEmail(req.auth!.organizationId, email.subject, bullets);
     const queued = await queueSend(email.id, actor.id);
     const doc = await loadMailbox(req.auth!.organizationId, actor.id);
     res.status(201).json(

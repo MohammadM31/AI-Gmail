@@ -8,7 +8,7 @@ import { trackEvent } from "../services/analyticsService";
 import { logAudit } from "../services/auditService";
 import { logger } from "../utils/logger"; // ✅ ADDED
 import { ApiError } from "../middleware/errorHandler";
-import { chartSpec, factSpec, storeInfographic, type ChartPayload } from "../services/infographicService";
+import { chartSpec, factSpec, statedNumberChart, storeInfographic, type ChartPayload } from "../services/infographicService";
 
 const processSchema = z.object({ 
   message: z.string()
@@ -63,7 +63,13 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
       req,
     });
 
-    const chart = await attachInfographic(req.auth!.organizationId, req.auth!.userId, result.chart, result.graphic);
+    const chart = await attachInfographic(
+      req.auth!.organizationId,
+      req.auth!.userId,
+      result.chart,
+      result.graphic,
+      message
+    );
 
     if (result.recipients.length === 0) {
       return res.json({
@@ -102,7 +108,8 @@ ${message}`
       req.auth!.organizationId,
       req.auth!.userId,
       result.chart,
-      result.graphic
+      result.graphic,
+      message
     );
     res.json(chart);
   } catch (err) {
@@ -114,11 +121,12 @@ async function attachInfographic(
   organizationId: string,
   userId: string,
   chart: ChartPayload | null,
-  graphic?: { title?: string; facts?: string[] } | null
+  graphic?: { title?: string; facts?: string[] } | null,
+  sourceText = ""
 ): Promise<ChartPayload | null> {
   const numbers = chartSpec(chart);
   const facts = numbers ? null : factSpec(graphic ?? null);
-  const spec = numbers ?? facts;
+  const spec = numbers ?? facts ?? statedNumberChart(sourceText);
   if (!spec) return numbers ? asChart(numbers) : null;
   const imagePath = await storeInfographic(organizationId, userId, spec);
   if (spec.kind === "chart") {

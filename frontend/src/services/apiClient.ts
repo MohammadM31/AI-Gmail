@@ -1147,9 +1147,32 @@ export async function updateConversationProject(
   });
 }
 
+export async function updateProject(
+  id: string,
+  input: {
+    name?: string;
+    description?: string | null;
+    repositoryUrl?: string | null;
+    applicationUrl?: string | null;
+  }
+) {
+  return request<Project>(`/api/requirements/projects/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function syncProjectDetails() {
+  return request<{ updated: number }>("/api/requirements/projects/sync", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
 export async function createProject(
   input: {
-    clientUserId: string;
+    clientUserId?: string;
+    contactId?: string;
     name: string;
     description?: string;
     repositoryUrl?: string;

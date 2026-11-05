@@ -402,6 +402,8 @@ export interface ClientUser {
   name: string;
 
   email: string;
+
+  kind?: "user" | "contact";
 }
 
 // ============================================================

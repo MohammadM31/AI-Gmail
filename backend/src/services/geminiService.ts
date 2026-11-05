@@ -113,17 +113,23 @@ Expected JSON:
   ],
   "subject": "string",
   "bulletPoints": ["string"],
-  "chart": null,
+  "chart": {
+    "type": "bar",
+    "title": "Client sales",
+    "labels": ["Decrease"],
+    "values": [70]
+  },
   "graphic": null,
   "tone": "professional | casual | urgent"
 }
 
 Chart rules:
-- Set chart only when the message states real numbers. Use bar, line, or pie.
-- Copy those numbers. Do not invent any.
-- When there are no numbers, set chart to null.
-- Set graphic to {"title": string, "facts": [string]} only when a short visual of 2 to 4 facts (a date, a step, a comparison) would make the message easier to scan.
-- Otherwise graphic is null. Do not set both chart and graphic.
+- A percentage or other stated figure must become a chart. Use bar, line, or pie.
+- Copy only numbers written in the message. Do not invent a second figure.
+- One figure is a one-bar chart. "70% decrease in client sales" is {"type":"bar","title":"Client sales","labels":["Decrease"],"values":[70]}.
+- A time such as 7pm is not a chart value.
+- When the message has no figures, set chart to null.
+- Set graphic only when there is no chart and 2 to 4 facts would be easier to scan. Do not set both.
 
 Message:
 

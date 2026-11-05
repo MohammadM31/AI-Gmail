@@ -101,6 +101,33 @@ export function chartSpec(chart: {
   return { kind: "chart", type, title: chart.title ?? "", labels, values };
 }
 
+export function statedNumberChart(text: string): GraphicSpec | null {
+  const found: { value: number; label: string }[] = [];
+  const pattern = /(\d+(?:\.\d+)?)\s*%/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text))) {
+    const value = Number(match[1]);
+    if (!Number.isFinite(value)) continue;
+    const after = text.slice(match.index + match[0].length, match.index + match[0].length + 60);
+    const before = text.slice(Math.max(0, match.index - 40), match.index);
+    const afterLabel = after.match(
+      /^\s*((?:decrease|increase|drop|growth|decline|rise|fall)\s+in\s+[a-z][a-z\s]{2,40})/i
+    );
+    const raw = afterLabel?.[1]?.split(/\b(?:with|and|for|at|on)\b/i)[0]
+      ?? before.trim().split(/\s+/).slice(-3).join(" ");
+    const label = raw.replace(/^(a|the|steep|sharp)\s+/i, "").replace(/\s+/g, " ").trim().slice(0, 40);
+    found.push({ value, label: label || "Change" });
+  }
+  if (found.length === 0) return null;
+  return {
+    kind: "chart",
+    type: "bar",
+    title: found.length === 1 ? found[0].label : "Figures from the message",
+    labels: found.map((item) => item.label),
+    values: found.map((item) => item.value),
+  };
+}
+
 export function factSpec(graphic: { title?: string; facts?: unknown } | null): GraphicSpec | null {
   if (!graphic || !Array.isArray(graphic.facts)) return null;
   const facts = graphic.facts.filter((fact): fact is string => typeof fact === "string" && fact.trim().length > 0);

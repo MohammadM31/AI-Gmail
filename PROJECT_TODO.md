@@ -25,6 +25,8 @@ Emails are AI summaries of the critical facts, with an infographic that supports
 
 Shipped 2026-11-04:
 
+- Project details can be edited after creation. An email that uses the project name rewrites that brief with the email’s new facts.
+- Project list shows the name and its client, with search and a client filter. Add a new project starts as a button. The form asks for the client and a readme-style brief. Repository and app URLs are optional. Statistics and pictures each open on their own page. Clients include organization client accounts and saved contacts.
 - Matplotlib infographics. A prompt with real figures becomes a PNG of those figures. A prompt without numbers keeps the bullets and adds a fact graphic only when that is easier to scan. Chart.js remains for older messages that have no image.
 - Sending delivers inside the organization after a 10 second undo window. External delivery uses SMTP when `SMTP_HOST` and `SMTP_FROM` are set, and DKIM when `DKIM_PRIVATE_KEY`, `DKIM_DOMAIN`, and `DKIM_SELECTOR` are set. SPF and DMARC stay DNS records on the sending domain. Inbound mail and bounces arrive at `/api/mail/inbound` and `/api/mail/bounce` with `MAIL_WEBHOOK_SECRET`.
 - Mailbox folders: Inbox, Sent, Drafts, Scheduled, Spam, Archive, Trash, and Starred. Trash restores a soft-deleted message. Stars, unread count, and labels.

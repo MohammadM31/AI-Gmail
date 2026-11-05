@@ -1,37 +1,32 @@
 // frontend/src/components/Requirements/ProjectsDashboard.tsx
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
   listProjectsSummary,
   listClientsInOrg,
   createProject,
+  updateProject,
+  syncProjectDetails,
 } from "../../services/apiClient";
 
 import type { ClientUser, ProjectSummary } from "../../types";
-import { ConversationProjects } from "../Projects/ConversationProjects";
 
 const INPUT_CLASS =
-  "w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none";
+  "w-full rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-surface-dark px-3 py-1.5 text-sm outline-none";
 
-// Only render stored URLs as links when they're plain http(s); anything else
-// (e.g. a javascript: URL that slipped past server validation) stays text.
+type Section = "details" | "statistics" | "pictures";
+
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
 function UrlLine({ label, url }: { label: string; url: string | null }) {
   if (!url) return null;
-
   return (
     <div className="flex gap-2 text-xs min-w-0">
       <span className="opacity-40 shrink-0">{label}</span>
       {isHttpUrl(url) ? (
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="truncate underline opacity-70 hover:opacity-100"
-        >
+        <a href={url} target="_blank" rel="noopener noreferrer" className="truncate underline opacity-70 hover:opacity-100">
           {url}
         </a>
       ) : (
@@ -44,17 +39,19 @@ function UrlLine({ label, url }: { label: string; url: string | null }) {
 export function ProjectsDashboard() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [clients, setClients] = useState<ClientUser[]>([]);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [clientFilter, setClientFilter] = useState("all");
+  const [screen, setScreen] = useState<"list" | "create" | "project">("list");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [section, setSection] = useState<Section>("details");
 
-  const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-
-  const [clientUserId, setClientUserId] = useState("");
+  const [clientChoice, setClientChoice] = useState("");
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [details, setDetails] = useState("");
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [applicationUrl, setApplicationUrl] = useState("");
 
@@ -62,12 +59,11 @@ export function ProjectsDashboard() {
     try {
       setLoading(true);
       setError(null);
-
+      await syncProjectDetails().catch(() => undefined);
       const [projectsData, clientsData] = await Promise.all([
         listProjectsSummary(),
         listClientsInOrg(),
       ]);
-
       setProjects(projectsData);
       setClients(clientsData);
     } catch (err) {
@@ -81,49 +77,51 @@ export function ProjectsDashboard() {
     load();
   }, []);
 
+  const clientNames = useMemo(
+    () => Array.from(new Set(projects.map((project) => project.clientName || "Unknown client"))).sort(),
+    [projects]
+  );
+
+  const visible = projects.filter((project) => {
+    const client = project.clientName || "Unknown client";
+    if (clientFilter !== "all" && client !== clientFilter) return false;
+    const haystack = `${project.name} ${client}`.toLowerCase();
+    return haystack.includes(query.trim().toLowerCase());
+  });
+
+  const openProject = projects.find((project) => project.id === openId) ?? null;
+
   function resetForm() {
-    setClientUserId("");
+    setClientChoice("");
     setName("");
-    setDescription("");
+    setDetails("");
     setRepositoryUrl("");
     setApplicationUrl("");
     setFormError(null);
   }
 
-  function closeForm() {
-    setShowForm(false);
-    resetForm();
-  }
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-
-    const trimmedName = name.trim();
-    if (!clientUserId || !trimmedName) {
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const [kind, id] = clientChoice.split(":");
+    if (!id || !name.trim()) {
       setFormError("Choose a client and enter a project name.");
       return;
     }
-
     try {
       setSubmitting(true);
       setFormError(null);
-
       await createProject({
-        clientUserId,
-        name: trimmedName,
-        // The API rejects empty strings for the optional fields, so only
-        // send the ones that were filled in.
-        description: description.trim() || undefined,
+        ...(kind === "contact" ? { contactId: id } : { clientUserId: id }),
+        name: name.trim(),
+        description: details.trim() || undefined,
         repositoryUrl: repositoryUrl.trim() || undefined,
         applicationUrl: applicationUrl.trim() || undefined,
       });
-
-      closeForm();
+      resetForm();
+      setScreen("list");
       await load();
     } catch (err) {
-      setFormError(
-        err instanceof Error ? err.message : "Failed to create project"
-      );
+      setFormError(err instanceof Error ? err.message : "Failed to create project");
     } finally {
       setSubmitting(false);
     }
@@ -139,191 +137,312 @@ export function ProjectsDashboard() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <ConversationProjects embedded />
       {error && (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/10 text-red-500 p-4 text-sm">
-          {error}
-        </div>
+        <div className="rounded-xl border border-red-500/20 bg-red-500/10 text-red-500 p-4 text-sm">{error}</div>
       )}
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Client Projects</h2>
-          <p className="text-sm opacity-50 mt-1">
-            Active projects, grouped by the client they belong to.
-          </p>
-        </div>
+      {screen === "list" && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Client Projects</h2>
+              <p className="text-sm opacity-50 mt-1">Search by the project name or its client.</p>
+            </div>
+            <button
+              onClick={() => {
+                resetForm();
+                setScreen("create");
+              }}
+              className="rounded-full bg-highlight px-4 py-1.5 text-sm font-medium text-white hover:opacity-90"
+            >
+              Add a new project
+            </button>
+          </div>
 
-        {!showForm && (
-          <button
-            onClick={() => setShowForm(true)}
-            className="rounded-full bg-highlight px-4 py-1.5 text-sm font-medium text-white hover:opacity-90"
-          >
-            New Project
-          </button>
-        )}
-      </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search projects"
+              className={`max-w-sm ${INPUT_CLASS}`}
+            />
+            <select
+              value={clientFilter}
+              onChange={(event) => setClientFilter(event.target.value)}
+              className={INPUT_CLASS + " max-w-xs"}
+            >
+              <option value="all">All clients</option>
+              {clientNames.map((client) => (
+                <option key={client} value={client}>{client}</option>
+              ))}
+            </select>
+          </div>
 
-      {showForm && (
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-5 space-y-4"
-        >
-          <h3 className="text-sm font-medium">New project</h3>
-
-          {formError && (
-            <div className="rounded-lg border border-red-500/20 bg-red-500/10 text-red-500 px-3 py-2 text-sm">
-              {formError}
+          {visible.length === 0 ? (
+            <div className="border border-dashed border-black/10 dark:border-white/10 rounded-xl p-10 text-center text-sm opacity-50">
+              No projects match.
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {visible.map((project) => (
+                <button
+                  key={project.id}
+                  onClick={() => {
+                    setOpenId(project.id);
+                    setSection("details");
+                    setScreen("project");
+                  }}
+                  className="text-left rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-5 hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  <h3 className="font-medium truncate">{project.name}</h3>
+                  <p className="text-xs opacity-60 mt-1">{project.clientName ?? "Unknown client"}</p>
+                </button>
+              ))}
             </div>
           )}
+        </section>
+      )}
 
+      {screen === "create" && (
+        <form onSubmit={handleSubmit} className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-5 space-y-4">
+          <button type="button" onClick={() => setScreen("list")} className="text-xs underline opacity-60">
+            ← Projects
+          </button>
+          <h3 className="text-sm font-medium">New project</h3>
+          {formError && (
+            <div className="rounded-lg border border-red-500/20 bg-red-500/10 text-red-500 px-3 py-2 text-sm">{formError}</div>
+          )}
+          <label className="block text-xs opacity-70">
+            Name
+            <input className={`mt-1 ${INPUT_CLASS}`} value={name} onChange={(event) => setName(event.target.value)} maxLength={200} required />
+          </label>
           <label className="block text-xs opacity-70">
             Client
-            <select
-              className={`mt-1 ${INPUT_CLASS}`}
-              value={clientUserId}
-              onChange={(e) => setClientUserId(e.target.value)}
-              required
-            >
+            <select className={`mt-1 ${INPUT_CLASS}`} value={clientChoice} onChange={(event) => setClientChoice(event.target.value)} required>
               <option value="">Select a client…</option>
               {clients.map((client) => (
-                <option key={client.id} value={client.id}>
+                <option key={`${client.kind ?? "user"}:${client.id}`} value={`${client.kind ?? "user"}:${client.id}`}>
                   {client.name} ({client.email})
                 </option>
               ))}
             </select>
             {clients.length === 0 && (
-              <span className="block mt-1 opacity-70">
-                There are no client users in your organization yet.
-              </span>
+              <span className="block mt-1 opacity-70">Add a contact, or invite a client into the organization.</span>
             )}
           </label>
-
           <label className="block text-xs opacity-70">
-            Name
-            <input
-              className={`mt-1 ${INPUT_CLASS}`}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={200}
-              required
-            />
-          </label>
-
-          <label className="block text-xs opacity-70">
-            Description
+            Project details
             <textarea
               className={`mt-1 ${INPUT_CLASS}`}
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              rows={8}
+              value={details}
+              onChange={(event) => setDetails(event.target.value)}
               maxLength={5000}
+              placeholder="The general idea, the way a short readme would describe it."
             />
           </label>
-
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block text-xs opacity-70">
-              Repository URL
-              <input
-                className={`mt-1 ${INPUT_CLASS}`}
-                type="url"
-                placeholder="https://github.com/…"
-                value={repositoryUrl}
-                onChange={(e) => setRepositoryUrl(e.target.value)}
-              />
+              Repository URL <span className="opacity-50">(optional)</span>
+              <input className={`mt-1 ${INPUT_CLASS}`} type="url" placeholder="https://github.com/…" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} />
             </label>
-
             <label className="block text-xs opacity-70">
-              App URL
-              <input
-                className={`mt-1 ${INPUT_CLASS}`}
-                type="url"
-                placeholder="https://…"
-                value={applicationUrl}
-                onChange={(e) => setApplicationUrl(e.target.value)}
-              />
+              App URL <span className="opacity-50">(optional)</span>
+              <input className={`mt-1 ${INPUT_CLASS}`} type="url" placeholder="https://…" value={applicationUrl} onChange={(event) => setApplicationUrl(event.target.value)} />
             </label>
           </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={submitting || clients.length === 0}
-              className="rounded-full bg-highlight px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-            >
-              {submitting ? "Creating..." : "Create project"}
-            </button>
-
-            <button
-              type="button"
-              onClick={closeForm}
-              disabled={submitting}
-              className="text-xs underline opacity-70 hover:opacity-100"
-            >
-              Cancel
-            </button>
-          </div>
+          <button type="submit" disabled={submitting || clients.length === 0} className="rounded-full bg-highlight px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50">
+            {submitting ? "Creating..." : "Create project"}
+          </button>
         </form>
       )}
 
-      {projects.length === 0 ? (
-        <div className="border border-dashed border-black/10 dark:border-white/10 rounded-xl p-10 text-center text-sm opacity-50">
-          No active projects yet.
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {projects.map((project) => (
-            <div
-              key={project.id}
-              className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-5 space-y-4"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h3 className="font-medium truncate">{project.name}</h3>
-                  <p className="text-xs opacity-60 mt-0.5">
-                    {project.clientName ?? "Unknown client"}
-                  </p>
-                </div>
+      {screen === "project" && openProject && (
+        <ProjectPage
+          project={openProject}
+          section={section}
+          onBack={() => setScreen("list")}
+          onSection={setSection}
+          onUpdated={(next) => {
+            setProjects((current) =>
+              current.map((item) => (item.id === next.id ? { ...item, ...next } : item))
+            );
+          }}
+        />
+      )}
+    </div>
+  );
+}
 
-                <span className="shrink-0 text-xs rounded-full px-2.5 py-1 bg-black/5 dark:bg-white/5">
-                  {project.status}
-                </span>
-              </div>
+function ProjectPage({
+  project,
+  section,
+  onBack,
+  onSection,
+  onUpdated,
+}: {
+  project: ProjectSummary;
+  section: Section;
+  onBack: () => void;
+  onSection: (section: Section) => void;
+  onUpdated: (project: ProjectSummary) => void;
+}) {
+  const tabs: { id: Section; label: string }[] = [
+    { id: "details", label: "Project details" },
+    { id: "statistics", label: "Statistics" },
+    { id: "pictures", label: "Pictures" },
+  ];
 
-              {project.description && (
-                <p className="text-sm opacity-75">{project.description}</p>
-              )}
+  return (
+    <section className="space-y-4">
+      <button onClick={onBack} className="text-xs underline opacity-60">← Projects</button>
+      <div>
+        <h2 className="text-lg font-semibold">{project.name}</h2>
+        <p className="text-sm opacity-60">{project.clientName ?? "Unknown client"}</p>
+      </div>
+      <div className="flex gap-2">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => onSection(tab.id)}
+            className={`rounded-full px-3 py-1 text-xs ${
+              section === tab.id ? "bg-highlight text-white" : "border border-black/10 dark:border-white/10"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-              <div className="space-y-1">
-                <UrlLine label="Repo" url={project.repositoryUrl} />
-                <UrlLine label="App" url={project.applicationUrl} />
-              </div>
+      {section === "details" && (
+        <DetailsEditor project={project} onUpdated={onUpdated} />
+      )}
 
-              <div className="flex gap-6 pt-4 border-t border-black/10 dark:border-white/10">
-                <div>
-                  <div className="text-lg font-semibold">
-                    {project.requirementCount}
-                  </div>
-                  <div className="text-[11px] opacity-50">Requirements</div>
-                </div>
-
-                <div>
-                  <div
-                    className={`text-lg font-semibold ${
-                      project.pendingModificationCount > 0
-                        ? "text-yellow-600 dark:text-yellow-400"
-                        : ""
-                    }`}
-                  >
-                    {project.pendingModificationCount}
-                  </div>
-                  <div className="text-[11px] opacity-50">Pending review</div>
-                </div>
-              </div>
-            </div>
-          ))}
+      {section === "statistics" && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <Stat label="Requirements" value={String(project.requirementCount)} />
+          <Stat label="Pending review" value={String(project.pendingModificationCount)} />
+          <Stat label="Status" value={project.status} />
         </div>
       )}
+
+      {section === "pictures" && (
+        <div className="border border-dashed border-black/10 dark:border-white/10 rounded-xl p-10 text-center text-sm opacity-50">
+          Picture data for this project shows up here.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DetailsEditor({
+  project,
+  onUpdated,
+}: {
+  project: ProjectSummary;
+  onUpdated: (project: ProjectSummary) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [details, setDetails] = useState(project.description ?? "");
+  const [repositoryUrl, setRepositoryUrl] = useState(project.repositoryUrl ?? "");
+  const [applicationUrl, setApplicationUrl] = useState(project.applicationUrl ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setEditing(false);
+    setDetails(project.description ?? "");
+    setRepositoryUrl(project.repositoryUrl ?? "");
+    setApplicationUrl(project.applicationUrl ?? "");
+    setError(null);
+  }, [project.id, project.description, project.repositoryUrl, project.applicationUrl]);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    try {
+      setSaving(true);
+      setError(null);
+      const saved = await updateProject(project.id, {
+        description: details.trim() || null,
+        repositoryUrl: repositoryUrl.trim() || null,
+        applicationUrl: applicationUrl.trim() || null,
+      });
+      onUpdated({ ...project, ...saved });
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the project details");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <article className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-medium">Readme</h3>
+          <button
+            onClick={() => setEditing(true)}
+            className="rounded-full bg-highlight px-3 py-1 text-xs font-medium text-white"
+          >
+            Edit details
+          </button>
+        </div>
+        <p className="text-sm whitespace-pre-wrap opacity-80">
+          {project.description?.trim() || "No project details yet."}
+        </p>
+        <p className="text-xs opacity-50">
+          An email that uses this project’s name adds its new facts here.
+        </p>
+        <UrlLine label="Repo" url={project.repositoryUrl} />
+        <UrlLine label="App" url={project.applicationUrl} />
+      </article>
+    );
+  }
+
+  return (
+    <form onSubmit={save} className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-5 space-y-4">
+      <h3 className="text-sm font-medium">Edit details</h3>
+      {error && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/10 text-red-500 px-3 py-2 text-sm">{error}</div>
+      )}
+      <label className="block text-xs opacity-70">
+        Project details
+        <textarea
+          className={`mt-1 ${INPUT_CLASS}`}
+          rows={8}
+          value={details}
+          onChange={(event) => setDetails(event.target.value)}
+          maxLength={5000}
+        />
+      </label>
+      <div className="grid gap-4 md:grid-cols-2">
+        <label className="block text-xs opacity-70">
+          Repository URL <span className="opacity-50">(optional)</span>
+          <input className={`mt-1 ${INPUT_CLASS}`} type="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} />
+        </label>
+        <label className="block text-xs opacity-70">
+          App URL <span className="opacity-50">(optional)</span>
+          <input className={`mt-1 ${INPUT_CLASS}`} type="url" value={applicationUrl} onChange={(event) => setApplicationUrl(event.target.value)} />
+        </label>
+      </div>
+      <div className="flex items-center gap-3">
+        <button type="submit" disabled={saving} className="rounded-full bg-highlight px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50">
+          {saving ? "Saving..." : "Save details"}
+        </button>
+        <button type="button" onClick={() => setEditing(false)} className="text-xs underline opacity-70">
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark p-5">
+      <div className="text-lg font-semibold">{value}</div>
+      <div className="text-xs opacity-50 mt-1">{label}</div>
     </div>
   );
 }

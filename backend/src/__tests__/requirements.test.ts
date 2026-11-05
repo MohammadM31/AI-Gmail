@@ -144,16 +144,25 @@ describe("GET /api/requirements/clients", () => {
       { id: "c2", name: "Globex", email: "it@globex.test" },
     ];
     const clientsQuery = makeQuery({ data: clients, error: null });
+    const contactsQuery = makeQuery({
+      data: [{ id: "33333333-3333-4333-8333-333333333333", name: "Hadi", email: "hadi@example.com" }],
+      error: null,
+    });
     mockedSupabase.from
       .mockReturnValueOnce(staffLookup())
-      .mockReturnValueOnce(clientsQuery);
+      .mockReturnValueOnce(clientsQuery)
+      .mockReturnValueOnce(makeQuery({ data: [{ id: "staff-1" }], error: null }))
+      .mockReturnValueOnce(contactsQuery);
 
     const res = await request(app)
       .get("/api/requirements/clients")
       .set("Authorization", `Bearer ${token()}`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual(clients);
+    expect(res.body).toEqual([
+      ...clients.map((client) => ({ ...client, kind: "user" })),
+      { id: "33333333-3333-4333-8333-333333333333", name: "Hadi", email: "hadi@example.com", kind: "contact" },
+    ]);
     expect(mockedSupabase.from).toHaveBeenNthCalledWith(2, "User");
     expect(clientsQuery.select).toHaveBeenCalledWith("id, name, email");
     expect(clientsQuery.eq).toHaveBeenCalledWith("organizationId", "org-1");
