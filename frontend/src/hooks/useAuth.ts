@@ -19,8 +19,8 @@ export function useAuth() {
         );
         return;
       }
-      const { user: loggedInUser, token } = await api.login(email, password);
-      setSession(loggedInUser, token);
+      const { user: loggedInUser, csrfToken } = await api.login(email, password);
+      setSession(loggedInUser, null, csrfToken);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
       throw err;
@@ -53,8 +53,8 @@ export function useAuth() {
         );
         return;
       }
-      const { user: newUser, token } = await api.register(input);
-      setSession(newUser, token);
+      const { user: newUser, csrfToken } = await api.register(input);
+      setSession(newUser, null, csrfToken);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
       throw err;

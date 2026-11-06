@@ -24,6 +24,8 @@ import sprintRoutes from "./routes/sprintRoutes";
 import clientProjectRoutes from "./routes/clientProjectRoutes";
 import mailboxRoutes from "./routes/mailboxRoutes";
 import mailWebhookRoutes from "./routes/mailWebhookRoutes";
+import digestRoutes from "./routes/digestRoutes";
+import taskRoutes from "./routes/taskRoutes";
 
 validateEnvironment();
 
@@ -400,6 +402,16 @@ app.use(
 app.use(
   "/api/mailbox",
   mailboxRoutes
+);
+
+app.use(
+  "/api/digest",
+  digestRoutes
+);
+
+app.use(
+  "/api/tasks",
+  taskRoutes
 );
 
 app.use(

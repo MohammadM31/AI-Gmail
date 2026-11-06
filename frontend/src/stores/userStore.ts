@@ -4,24 +4,34 @@ import type { User } from "../types";
 interface UserState {
   user: User | null;
   token: string | null;
-  setSession: (user: User, token: string) => void;
+  csrfToken: string | null;
+  setSession: (user: User, token: string | null, csrfToken?: string | null) => void;
   logout: () => void;
 }
 
-const storedToken = localStorage.getItem("auth_token");
-const storedUser = localStorage.getItem("auth_user");
+const API_URL = import.meta.env.VITE_API_URL || "https://ai-gmail-lw6d.onrender.com";
 
-export const useUserStore = create<UserState>((set) => ({
-  user: storedUser ? JSON.parse(storedUser) : null,
-  token: storedToken,
-  setSession: (user, token) => {
-    localStorage.setItem("auth_token", token);
-    localStorage.setItem("auth_user", JSON.stringify(user));
-    set({ user, token });
-  },
-  logout: () => {
+localStorage.removeItem("auth_token");
+localStorage.removeItem("auth_user");
+
+export const useUserStore = create<UserState>((set, get) => ({
+  user: null,
+  token: null,
+  csrfToken: null,
+  setSession: (user, token, csrfToken = null) => {
     localStorage.removeItem("auth_token");
     localStorage.removeItem("auth_user");
-    set({ user: null, token: null });
+    set({ user, token, csrfToken });
+  },
+  logout: () => {
+    const csrfToken = get().csrfToken;
+    fetch(`${API_URL}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+      headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
+    }).catch(() => undefined);
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_user");
+    set({ user: null, token: null, csrfToken: null });
   },
 }));

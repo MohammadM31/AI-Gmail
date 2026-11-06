@@ -117,6 +117,47 @@ model Analytics {
   @@index([eventType])
 }
 
+model MailboxProfile {
+  userId         String @id
+  organizationId String
+  signature      Json
+  aliases        Json
+  lists          Json
+  autoReply      Json
+  rules          Json
+  shares         Json
+  access         Json
+  autoReplied    Json
+}
+
+model MailboxEmail {
+  userId         String
+  emailId        String
+  organizationId String
+  meta           Json
+
+  @@id([userId, emailId])
+}
+
+model AuthSession {
+  id             String   @id
+  userId         String
+  organizationId String
+  expiresAt      DateTime
+  revoked        Boolean  @default(false)
+}
+
+model Task {
+  id              String   @id @default(uuid())
+  organizationId  String
+  userId          String
+  title           String
+  projectId       String?
+  pipelineStageId String?
+  emailId         String?
+  createdAt       DateTime @default(now())
+}
+
 model AuditLog {
   id        String   @id @default(cuid())
   userId    String

@@ -1,0 +1,26 @@
+name: e2e
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # package-lock.json is gitignored, so npm ci cannot run here.
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ secrets.PLAYWRIGHT_BASE_URL }}
+          PLAYWRIGHT_EMAIL: ${{ secrets.PLAYWRIGHT_EMAIL }}
+          PLAYWRIGHT_PASSWORD: ${{ secrets.PLAYWRIGHT_PASSWORD }}
+          PLAYWRIGHT_RECIPIENT: ${{ secrets.PLAYWRIGHT_RECIPIENT }}

@@ -19,14 +19,15 @@ export function createCsrfToken(userId: string): string {
   
   tokenStore.set(userId, { token, expiresAt });
   
-  // Clean up expired tokens periodically
-  setTimeout(() => {
+  // Clean up expired tokens periodically. unref so tests can exit.
+  const timer = setTimeout(() => {
     for (const [key, value] of tokenStore) {
       if (value.expiresAt < new Date()) {
         tokenStore.delete(key);
       }
     }
   }, 60000); // Check every minute
+  timer.unref();
   
   return token;
 }
@@ -49,8 +50,9 @@ export function csrfProtection(req: Request, _res: Response, next: NextFunction)
     return next();
   }
 
-  // Skip for auth endpoints (they use different authentication)
-  if (req.path.startsWith("/api/auth")) {
+  // Login and register mint the session. Later auth routes still check the token.
+  const url = req.originalUrl || req.path;
+  if (url.startsWith("/api/auth/login") || url.startsWith("/api/auth/register")) {
     return next();
   }
 

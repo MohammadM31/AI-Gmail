@@ -7,9 +7,11 @@ import {
   createProject,
   updateProject,
   syncProjectDetails,
+  createDigest,
+  listTasks,
 } from "../../services/apiClient";
 
-import type { ClientUser, ProjectSummary } from "../../types";
+import type { ClientUser, ProjectSummary, Task } from "../../types";
 
 const INPUT_CLASS =
   "w-full rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-surface-dark px-3 py-1.5 text-sm outline-none";
@@ -54,6 +56,21 @@ export function ProjectsDashboard() {
   const [details, setDetails] = useState("");
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [applicationUrl, setApplicationUrl] = useState("");
+  const [digestContact, setDigestContact] = useState("");
+  const [digestNote, setDigestNote] = useState<string | null>(null);
+
+  async function requestDigest(scope: "daily" | "contact") {
+    try {
+      setDigestNote(null);
+      const result = await createDigest({
+        scope,
+        contactId: scope === "contact" ? digestContact : undefined,
+      });
+      setDigestNote(result.emailId ? "Digest is in your inbox." : "Digest requested.");
+    } catch (err) {
+      setDigestNote(err instanceof Error ? err.message : "Could not build the digest");
+    }
+  }
 
   async function load() {
     try {
@@ -153,10 +170,40 @@ export function ProjectsDashboard() {
                 resetForm();
                 setScreen("create");
               }}
-              className="rounded-full bg-highlight px-4 py-1.5 text-sm font-medium text-white hover:opacity-90"
+              className="rounded-full bg-highlight px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
             >
               Add a new project
             </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => requestDigest("daily")}
+              className="rounded-full border border-black/10 dark:border-white/10 px-3 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
+            >
+              Daily digest
+            </button>
+            <select
+              aria-label="Digest contact"
+              value={digestContact}
+              onChange={(event) => setDigestContact(event.target.value)}
+              className={`${INPUT_CLASS} max-w-xs focus-visible:ring-2 focus-visible:ring-highlight`}
+            >
+              <option value="">Contact for a digest</option>
+              {clients.filter((client) => client.kind !== "contact").map((client) => (
+                <option key={client.id} value={client.id}>{client.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => requestDigest("contact")}
+              disabled={!digestContact}
+              className="rounded-full border border-black/10 dark:border-white/10 px-3 py-1.5 text-xs disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
+            >
+              Contact digest
+            </button>
+            {digestNote && <span className="text-xs opacity-70">{digestNote}</span>}
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -164,7 +211,8 @@ export function ProjectsDashboard() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search projects"
-              className={`max-w-sm ${INPUT_CLASS}`}
+              aria-label="Search projects"
+              className={`max-w-sm ${INPUT_CLASS} focus-visible:ring-2 focus-visible:ring-highlight`}
             />
             <select
               value={clientFilter}
@@ -274,6 +322,29 @@ export function ProjectsDashboard() {
   );
 }
 
+function ProjectTasks({ projectId }: { projectId: string }) {
+  const [tasks, setTasks] = useState<Task[]>([]);
+
+  useEffect(() => {
+    listTasks(projectId).then(setTasks).catch(() => setTasks([]));
+  }, [projectId]);
+
+  return (
+    <section className="rounded-xl border border-black/10 dark:border-white/10 p-4 space-y-2">
+      <h3 className="text-sm font-medium">Tasks</h3>
+      {tasks.length === 0 ? (
+        <p className="text-xs opacity-60">No tasks for this project yet.</p>
+      ) : (
+        <ul className="space-y-1 text-sm">
+          {tasks.map((task) => (
+            <li key={task.id}>{task.title}</li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function ProjectPage({
   project,
   section,
@@ -300,7 +371,7 @@ function ProjectPage({
         <h2 className="text-lg font-semibold">{project.name}</h2>
         <p className="text-sm opacity-60">{project.clientName ?? "Unknown client"}</p>
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -315,7 +386,10 @@ function ProjectPage({
       </div>
 
       {section === "details" && (
-        <DetailsEditor project={project} onUpdated={onUpdated} />
+        <>
+          <DetailsEditor project={project} onUpdated={onUpdated} />
+          <ProjectTasks projectId={project.id} />
+        </>
       )}
 
       {section === "statistics" && (

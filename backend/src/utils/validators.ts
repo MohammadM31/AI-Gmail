@@ -93,6 +93,7 @@ export const emailCreateSchema = z.object({
       imagePath: z.string().max(500).optional(),
 
       facts: z.array(z.string().max(180)).max(6).optional(),
+      enabled: z.boolean().optional(),
     })
     .nullable()
     .optional(),
@@ -157,6 +158,7 @@ const chartDataSchema = z
     values: z.array(z.number()),
     imagePath: z.string().max(500).optional(),
     facts: z.array(z.string().max(180)).max(6).optional(),
+    enabled: z.boolean().optional(),
   })
   .nullable();
 

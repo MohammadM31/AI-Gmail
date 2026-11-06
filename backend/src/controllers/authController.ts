@@ -6,14 +6,45 @@ import {
   NextFunction,
 } from "express";
 
+import { randomUUID } from "crypto";
 import { supabase } from "../utils/supabaseClient";
+import { logger } from "../utils/logger";
 import { ApiError } from "../middleware/errorHandler";
 import {
   registerSchema,
   loginSchema,
 } from "../utils/validators";
-import { signAppToken } from "../utils/jwt";
+import {
+  clearSessionCookie,
+  readCookieHeader,
+  rememberSession,
+  revokeSession,
+  sessionCookie,
+  signSessionToken,
+} from "../utils/jwt";
+import { createCsrfToken } from "../middleware/csrf";
 import { generateInviteCode } from "../utils/inviteCode";
+import jwt from "jsonwebtoken";
+
+async function issueSession(res: Response, userId: string, organizationId: string) {
+  const sessionId = randomUUID();
+  rememberSession(sessionId, userId);
+  try {
+    const { error } = await supabase.from("AuthSession").insert({
+      id: sessionId,
+      userId,
+      organizationId,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      revoked: false,
+    });
+    if (error) logger.warn({ err: error.message }, "Auth session was not stored");
+  } catch {
+    // The in-memory session still covers this process, including tests.
+  }
+  const token = signSessionToken(userId, organizationId, sessionId);
+  res.append("Set-Cookie", sessionCookie(token));
+  return { token, csrfToken: createCsrfToken(userId) };
+}
 
 export async function register(
   req: Request,
@@ -229,7 +260,8 @@ export async function register(
       authData.user.id
     );
 
-    const token = signAppToken(
+    const issued = await issueSession(
+      res,
       authData.user.id,
       organizationId
     );
@@ -243,7 +275,8 @@ export async function register(
         role: finalRole,
         staffRole: finalStaffRole,
       },
-      token,
+      token: issued.token,
+      csrfToken: issued.csrfToken,
     });
   } catch (err) {
     console.error(
@@ -329,15 +362,16 @@ export async function login(
       );
     }
 
-    const token =
-      signAppToken(
-        userRow.id,
-        userRow.organizationId
-      );
+    const issued = await issueSession(
+      res,
+      userRow.id,
+      userRow.organizationId
+    );
 
     res.json({
       user: userRow,
-      token,
+      token: issued.token,
+      csrfToken: issued.csrfToken,
     });
   } catch (err) {
     next(err);
@@ -350,9 +384,40 @@ export async function logout(
   next: NextFunction
 ) {
   try {
+    const token = readCookieHeader(req.headers.cookie, "app_session");
+    const secret = process.env.JWT_SECRET;
+    if (token && secret) {
+      try {
+        const payload = jwt.verify(token, secret) as { sid?: string };
+        revokeSession(payload.sid);
+        if (payload.sid) {
+          await supabase.from("AuthSession").update({ revoked: true }).eq("id", payload.sid);
+        }
+      } catch {
+        // An expired cookie still needs to be cleared.
+      }
+    }
     await supabase.auth.signOut();
-
+    res.append("Set-Cookie", clearSessionCookie());
     res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function refresh(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    if (!req.auth?.sessionId) {
+      throw new ApiError(400, "Refresh needs a cookie session");
+    }
+    revokeSession(req.auth.sessionId);
+    await supabase.from("AuthSession").update({ revoked: true }).eq("id", req.auth.sessionId);
+    const issued = await issueSession(res, req.auth.userId, req.auth.organizationId);
+    res.json({ csrfToken: issued.csrfToken });
   } catch (err) {
     next(err);
   }
@@ -394,7 +459,10 @@ export async function me(
       );
     }
 
-    res.json(data);
+    res.json({
+      ...data,
+      csrfToken: createCsrfToken(req.auth.userId),
+    });
   } catch (err) {
     next(err);
   }

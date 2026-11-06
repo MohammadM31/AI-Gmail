@@ -1,10 +1,10 @@
-import nodemailer from "nodemailer";
 import { supabase } from "../utils/supabaseClient";
 import { ApiError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 import { getIo } from "../realtime/socket";
 import { decryptEmailContent, createEmail } from "./emailProcessor";
 import { loadMailbox, mutateMailbox } from "./mailboxStore";
+import { rejectedAddress, rejectionMessage } from "./companyMail";
 import {
   applyRules,
   factsFromText,
@@ -39,29 +39,6 @@ function smtpFrom(): string {
   return process.env.SMTP_FROM || process.env.SMTP_USER || "";
 }
 
-function transporter() {
-  const host = process.env.SMTP_HOST;
-  if (!host) return null;
-  const privateKey = process.env.DKIM_PRIVATE_KEY?.replace(/\\n/g, "\n");
-  const dkim =
-    privateKey && process.env.DKIM_DOMAIN && process.env.DKIM_SELECTOR
-      ? {
-          domainName: process.env.DKIM_DOMAIN,
-          keySelector: process.env.DKIM_SELECTOR,
-          privateKey,
-        }
-      : undefined;
-  return nodemailer.createTransport({
-    host,
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: process.env.SMTP_PORT === "465",
-    auth: process.env.SMTP_USER
-      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-      : undefined,
-    dkim,
-  });
-}
-
 export function mailAuthStatus() {
   return {
     smtp: Boolean(process.env.SMTP_HOST && smtpFrom()),
@@ -94,11 +71,31 @@ function visibleAddresses(recipients: Address[]): Address[] {
   return recipients.filter((recipient) => (recipient.role ?? "to") !== "bcc");
 }
 
-function messageBody(bullets: string[]): string {
-  return bullets.filter(Boolean).map((bullet) => `• ${bullet}`).join("\n");
+export async function assertCompanyRecipients(
+  organizationId: string,
+  addresses: Array<string | null | undefined>
+): Promise<void> {
+  if (addresses.length === 0) return;
+  const offDomain = rejectedAddress(addresses);
+  if (offDomain) throw new ApiError(400, rejectionMessage(offDomain));
+  const unknown = rejectedAddress(addresses, await orgUsers(organizationId));
+  if (unknown) throw new ApiError(400, rejectionMessage(unknown));
 }
 
 export async function queueSend(emailId: string, senderId: string, sendAt?: string): Promise<EmailRow> {
+  const sender = await userById(senderId);
+  if (!sender) throw new ApiError(404, "Email not found");
+  const { data: draft, error: draftError } = await supabase
+    .from("Email")
+    .select("recipients")
+    .eq("id", emailId)
+    .eq("senderId", senderId)
+    .maybeSingle();
+  if (draftError || !draft) throw new ApiError(404, "Email not found");
+  const queuedMeta = (await loadMailbox(sender.organizationId, senderId)).emails[emailId];
+  const addressed = [...((draft.recipients ?? []) as Address[]), ...(queuedMeta?.bcc ?? [])];
+  await assertCompanyRecipients(sender.organizationId, addressed.map((address) => address.email));
+
   const decision = scheduleDecision(Date.now(), sendAt);
   const { data, error } = await supabase
     .from("Email")
@@ -110,19 +107,16 @@ export async function queueSend(emailId: string, senderId: string, sendAt?: stri
     .single();
   if (error || !data) throw new ApiError(404, "Email not found");
 
-  const sender = await userById(senderId);
-  if (sender) {
-    await mutateMailbox(sender.organizationId, senderId, (doc) => {
-      const current = doc.emails[emailId] ?? {};
-      doc.emails[emailId] = {
-        ...current,
-        undoUntil: decision.status === "pending" ? decision.at : null,
-        scheduledFor: decision.status === "scheduled" ? decision.at : null,
-        deliveryStatus: "pending",
-        direction: current.direction ?? "out",
-      };
-    });
-  }
+  await mutateMailbox(sender.organizationId, senderId, (doc) => {
+    const current = doc.emails[emailId] ?? {};
+    doc.emails[emailId] = {
+      ...current,
+      undoUntil: decision.status === "pending" ? decision.at : null,
+      scheduledFor: decision.status === "scheduled" ? decision.at : null,
+      deliveryStatus: "pending",
+      direction: current.direction ?? "out",
+    };
+  });
   return data as EmailRow;
 }
 
@@ -155,33 +149,10 @@ export async function deliverEmail(emailId: string): Promise<void> {
   const everyone = [...recipients, ...bcc];
   const external = everyone.filter((address) => address.email && !byEmail.has(address.email.trim().toLowerCase()));
 
-  let deliveryStatus: EmailMeta["deliveryStatus"] = external.length === 0 ? "internal" : "not_configured";
-  let bounceReason: string | null = null;
-  const transport = transporter();
-  if (external.length > 0 && transport && smtpFrom()) {
-    try {
-      const domain = smtpFrom().split("@")[1] || "localhost";
-      const toList = recipients.filter((address) => (address.role ?? "to") !== "cc");
-      const ccList = recipients.filter((address) => address.role === "cc");
-      await transport.sendMail({
-        from: smtpFrom(),
-        to: toList.map((address) => address.email).filter(Boolean) as string[],
-        cc: ccList.map((address) => address.email).filter(Boolean) as string[],
-        bcc: bcc.map((address) => address.email).filter(Boolean) as string[],
-        replyTo: meta.alias || undefined,
-        subject: row.subject,
-        text: messageBody(bullets),
-        messageId: `<${row.id}@${domain}>`,
-      });
-      deliveryStatus = "sent";
-    } catch (err) {
-      deliveryStatus = "failed";
-      bounceReason = "The mail server rejected the message.";
-      logger.error({ err, emailId }, "SMTP delivery failed");
-    }
-  } else if (external.length > 0 && !transport) {
-    bounceReason = "SMTP is not configured, so this message stayed inside the organization.";
-  }
+  // Mail never leaves the organization. A recipient who vanished since queueing bounces.
+  const deliveryStatus: EmailMeta["deliveryStatus"] = external.length === 0 ? "internal" : "bounced";
+  const bounceReason: string | null =
+    external.length === 0 ? null : "A recipient is no longer an account in this organization.";
 
   await supabase
     .from("Email")
@@ -200,9 +171,11 @@ export async function deliverEmail(emailId: string): Promise<void> {
     };
   });
 
+  const notified = new Set<string>();
   for (const address of everyone) {
     const person = address.email ? byEmail.get(address.email.trim().toLowerCase()) : undefined;
-    if (!person || person.id === sender.id) continue;
+    if (!person || person.id === sender.id || notified.has(person.id)) continue;
+    notified.add(person.id);
     const rulePatch = applyRules( (await loadMailbox(person.organizationId, person.id)).rules, {
       from: `${sender.name} ${sender.email}`,
       subject: row.subject,

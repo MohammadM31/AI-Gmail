@@ -70,10 +70,30 @@ function cleanJsonResponse(text: string): string {
     .trim();
 }
 
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  ar: "Arabic",
+  fr: "French",
+  es: "Spanish",
+  de: "German",
+  pt: "Portuguese",
+  it: "Italian",
+  tr: "Turkish",
+  ru: "Russian",
+  hi: "Hindi",
+  zh: "Chinese",
+  ja: "Japanese",
+};
+
+function languageName(tag: string): string {
+  return LANGUAGE_NAMES[tag.split("-")[0].toLowerCase()] ?? tag;
+}
+
 function buildPrompt(
   input: string,
   contacts: string[],
-  contentLength: number
+  contentLength: number,
+  language?: string
 ): string {
   let bulletGuidance: string;
 
@@ -93,6 +113,10 @@ function buildPrompt(
       ? `The user has the following contacts: ${contacts.join(", ")}.`
       : "The user has no contacts saved yet.";
 
+  const languageRule = language
+    ? `Write the subject and every bullet point in ${languageName(language)} (${language}). Keep the JSON keys, the chart type, and recipient names as they are. Copy numbers, dates, and times exactly as written.`
+    : "";
+
   return `
 You are an assistant that converts a rough email brief into structured data.
 
@@ -101,6 +125,8 @@ ${contactList}
 Return ONLY valid JSON.
 
 The bulletPoints field should contain ${bulletGuidance}.
+
+${languageRule}
 
 Expected JSON:
 
@@ -185,9 +211,10 @@ async function completeJson(prompt: string): Promise<string> {
 
 export async function processMessageWithAI(
   input: string,
-  contacts: string[] = []
+  contacts: string[] = [],
+  language?: string
 ): Promise<AiProcessResult> {
-  const text = await completeJson(buildPrompt(input, contacts, input.length));
+  const text = await completeJson(buildPrompt(input, contacts, input.length, language));
   const cleaned = cleanJsonResponse(text);
 
   try {

@@ -38,19 +38,22 @@ export function AuthScreen() {
 
         {mode === "register" && (
           <>
-            <input
-              className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none"
-              placeholder="Your name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+            <label className="block text-xs opacity-70">
+              Name
+              <input
+                className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-highlight"
+                placeholder="Your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </label>
 
             <div className="flex rounded-lg border border-black/10 dark:border-white/10 p-0.5 text-xs">
               <button
                 type="button"
                 onClick={() => setOrgMode("create")}
-                className={`flex-1 rounded-md py-1.5 transition ${
+                className={`flex-1 rounded-md py-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight ${
                   orgMode === "create"
                     ? "bg-highlight text-white"
                     : "opacity-60 hover:opacity-100"
@@ -61,7 +64,7 @@ export function AuthScreen() {
               <button
                 type="button"
                 onClick={() => setOrgMode("join")}
-                className={`flex-1 rounded-md py-1.5 transition ${
+                className={`flex-1 rounded-md py-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight ${
                   orgMode === "join" ? "bg-highlight text-white" : "opacity-60 hover:opacity-100"
                 }`}
               >
@@ -70,49 +73,61 @@ export function AuthScreen() {
             </div>
 
             {orgMode === "create" ? (
-              <input
-                className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none"
-                placeholder="Organization name"
-                value={organizationName}
-                onChange={(e) => setOrganizationName(e.target.value)}
-                required
-              />
+              <label className="block text-xs opacity-70">
+                Organization name
+                <input
+                  className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-highlight"
+                  placeholder="Organization name"
+                  value={organizationName}
+                  onChange={(e) => setOrganizationName(e.target.value)}
+                  required
+                />
+              </label>
             ) : (
-              <input
-                className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none"
-                placeholder="Invite code"
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
-                required
-              />
+              <label className="block text-xs opacity-70">
+                Invite code
+                <input
+                  className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-highlight"
+                  placeholder="Invite code"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  required
+                />
+              </label>
             )}
           </>
         )}
 
-        <input
-          type="email"
-          className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          type="password"
-          className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={mode === "register" ? 8 : undefined}
-        />
+        <label className="block text-xs opacity-70">
+          Email
+          <input
+            type="email"
+            className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-highlight"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </label>
+        <label className="block text-xs opacity-70">
+          Password
+          <input
+            type="password"
+            className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-highlight"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={mode === "register" ? 8 : undefined}
+          />
+        </label>
 
         {error && <p className="text-sm text-highlight">{error}</p>}
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-full bg-highlight px-4 py-2 text-sm font-medium text-white disabled:opacity-40 hover:opacity-90 transition"
+          className="w-full rounded-full bg-highlight px-4 py-2 text-sm font-medium text-white disabled:opacity-40 hover:opacity-90 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-highlight"
         >
           {loading ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
         </button>

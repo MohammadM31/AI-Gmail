@@ -29,9 +29,11 @@ ChartJS.register(
 
 export function ChartRenderer({ chart }: { chart: ChartData }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
-    if (!chart.imagePath) {
+    setImageFailed(false);
+    if (chart.enabled === false || !chart.imagePath) {
       setImageUrl(null);
       return;
     }
@@ -41,14 +43,20 @@ export function ChartRenderer({ chart }: { chart: ChartData }) {
         if (!cancelled) setImageUrl(result.url);
       })
       .catch(() => {
-        if (!cancelled) setImageUrl(null);
+        if (!cancelled) {
+          setImageUrl(null);
+          setImageFailed(true);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [chart.imagePath]);
+  }, [chart.imagePath, chart.enabled]);
 
-  if (imageUrl) {
+  // The sender turned the graphic off. Draw nothing, not even the stored PNG.
+  if (chart.enabled === false) return null;
+
+  if (imageUrl && chart.imagePath) {
     return (
       <img
         src={imageUrl}
@@ -57,6 +65,9 @@ export function ChartRenderer({ chart }: { chart: ChartData }) {
       />
     );
   }
+
+  // Wait for the stored PNG instead of flashing a redrawn chart first.
+  if (chart.imagePath && !imageFailed) return null;
 
   if (chart.type === "facts" && chart.facts && chart.facts.length > 0) {
     return (

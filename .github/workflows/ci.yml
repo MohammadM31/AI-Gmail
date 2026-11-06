@@ -19,14 +19,43 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: backend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
       - run: npm ci
       - run: npm run lint
       - run: npm run build
-      - run: npm test
+      - name: Infographic renderer test (must not skip in CI)
+        run: npm test -- infographicRender
         env:
+          CI: "true"
           JWT_SECRET: test-secret
           SUPABASE_URL: http://localhost
           SUPABASE_SERVICE_ROLE_KEY: test-key
+      - run: npm test
+        env:
+          CI: "true"
+          JWT_SECRET: test-secret
+          SUPABASE_URL: http://localhost
+          SUPABASE_SERVICE_ROLE_KEY: test-key
+
+  backend-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -t ai-gmail-backend ./backend
+      - name: Render a PNG inside the image
+        run: |
+          echo '{"kind":"chart","type":"bar","title":"Client sales","labels":["Decrease"],"values":[70]}' \
+            | docker run --rm -i --entrypoint python3 ai-gmail-backend scripts/render_infographic.py > /tmp/out.png
+          sig=$(head -c 4 /tmp/out.png | od -An -tx1 | tr -d ' \n')
+          test "$sig" = "89504e47"
+      - name: Runtime image has no dev dependencies
+        run: docker run --rm --entrypoint sh ai-gmail-backend -c 'test ! -d node_modules/typescript && test ! -d node_modules/jest'
 
   frontend:
     runs-on: ubuntu-latest

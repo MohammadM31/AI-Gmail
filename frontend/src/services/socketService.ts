@@ -5,15 +5,35 @@ import { API_URL } from "./apiClient";
 
 let socket: Socket | null = null;
 
-export function connectSocket(): Socket | null {
-  const { token } = useUserStore.getState();
-  const apiUrl = import.meta.env.VITE_API_URL ?? API_URL;
-  if (!apiUrl || !token) return null;
+export type MailEvent =
+  | { type: "received"; id: string; subject?: string }
+  | { type: "sent"; id: string; senderId?: string };
 
-  if (socket?.connected) return socket;
-  
-  socket = io(apiUrl, { 
-    auth: { token },
+const mailListeners = new Set<(event: MailEvent) => void>();
+
+// Fan socket mail events out to any number of subscribers (App toast,
+// EmailList refresh) so nobody needs a second connection or their own socket.on.
+export function onMailEvent(listener: (event: MailEvent) => void): () => void {
+  mailListeners.add(listener);
+  return () => {
+    mailListeners.delete(listener);
+  };
+}
+
+function emitMailEvent(event: MailEvent) {
+  mailListeners.forEach((listener) => listener(event));
+}
+
+export function connectSocket(): Socket | null {
+  const { user } = useUserStore.getState();
+  const apiUrl = import.meta.env.VITE_API_URL ?? API_URL;
+  if (!apiUrl || !user) return null;
+
+  // Reuse the socket even while it is still connecting or reconnecting.
+  if (socket) return socket;
+
+  socket = io(apiUrl, {
+    withCredentials: true,
     reconnection: true,
     reconnectionAttempts: 10,
     reconnectionDelay: 1000,
@@ -49,7 +69,15 @@ export function connectSocket(): Socket | null {
   socket.on('reconnect_failed', () => {
     console.warn('❌ Socket reconnection failed');
   });
-  
+
+  socket.on("email:received", (payload: { id: string; subject?: string }) => {
+    emitMailEvent({ ...payload, type: "received" });
+  });
+
+  socket.on("email:sent", (payload: { id: string; senderId?: string }) => {
+    emitMailEvent({ ...payload, type: "sent" });
+  });
+
   return socket;
 }
 

@@ -18,6 +18,7 @@ import type {
   ClientUser,
   Requirement,
   Modification,
+  Task,
 } from "../types";
 
 import { useUserStore } from "../stores/userStore";
@@ -44,13 +45,14 @@ async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token =
-    useUserStore.getState().token;
+  const { token, csrfToken } = useUserStore.getState();
+  const method = (options.method ?? "GET").toUpperCase();
 
   const res = await fetch(
     `${API_URL}${path}`,
     {
       ...options,
+      credentials: "include",
 
       headers: {
         "Content-Type":
@@ -61,6 +63,10 @@ async function request<T>(
               Authorization:
                 `Bearer ${token}`,
             }
+          : {}),
+
+        ...(csrfToken && method !== "GET" && method !== "HEAD"
+          ? { "X-CSRF-Token": csrfToken }
           : {}),
 
         ...options.headers,
@@ -144,8 +150,15 @@ async function request<T>(
 // AI
 // ============================================================
 
+export interface ProcessOptions {
+  /** BCP-47 tag such as "ar-SA" or "fr-FR". Omitted means English. */
+  language?: string;
+  chart?: { type?: "bar" | "line" | "pie"; title?: string; enabled?: boolean };
+}
+
 export async function processMessage(
-  message: string
+  message: string,
+  options: ProcessOptions = {}
 ): Promise<AiProcessResult> {
   return request<AiProcessResult>(
     "/api/ai/process",
@@ -154,6 +167,8 @@ export async function processMessage(
 
       body: JSON.stringify({
         message,
+        ...(options.language ? { language: options.language } : {}),
+        ...(options.chart ? { chart: options.chart } : {}),
       }),
     }
   );
@@ -170,6 +185,7 @@ export async function login(
   return request<{
     user: User;
     token: string;
+    csrfToken: string;
   }>("/api/auth/login", {
     method: "POST",
 
@@ -193,6 +209,7 @@ export async function register(
   return request<{
     user: User;
     token: string;
+    csrfToken: string;
   }>("/api/auth/register", {
     method: "POST",
 
@@ -855,6 +872,7 @@ export async function exportAnalytics(
     await fetch(
       `${API_URL}/api/analytics/export${qs}`,
       {
+        credentials: "include",
         headers: token
           ? {
               Authorization:
@@ -1279,4 +1297,28 @@ export async function reviewModification(
       }),
     }
   );
+}
+
+export async function createDigest(input: { scope: "daily" | "contact"; contactId?: string }) {
+  return request<{ emailId: string }>("/api/digest", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function listTasks(projectId?: string) {
+  const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+  return request<Task[]>(`/api/tasks${query}`);
+}
+
+export async function createTask(input: {
+  title: string;
+  projectId?: string;
+  pipelineStageId?: string;
+  emailId?: string;
+}) {
+  return request<Task>("/api/tasks", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }

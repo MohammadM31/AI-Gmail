@@ -7,10 +7,18 @@ interface Props {
   onChange: (recipients: { name: string; email: string | null }[]) => void;
 }
 
+const COMPANY_DOMAIN = "@raidtechs.com";
+
+function isCompanyEmail(email: string | null | undefined): boolean {
+  const value = (email ?? "").trim().toLowerCase();
+  return value.length > COMPANY_DOMAIN.length && value.endsWith(COMPANY_DOMAIN) && value.indexOf("@") === value.length - COMPANY_DOMAIN.length;
+}
+
 export function RecipientSuggester({ selected, onChange }: Props) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [lists, setLists] = useState<{ name: string; addresses: { name: string; email: string | null }[] }[]>([]);
   const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     listContacts().then(setContacts).catch(() => {});
@@ -19,6 +27,7 @@ export function RecipientSuggester({ selected, onChange }: Props) {
 
   const suggestions = contacts.filter(
     (c) =>
+      isCompanyEmail(c.email) &&
       c.name.toLowerCase().includes(query.toLowerCase()) &&
       !selected.some((s) => s.email === c.email)
   );
@@ -28,12 +37,13 @@ export function RecipientSuggester({ selected, onChange }: Props) {
     if (!raw) return;
     const named = raw.match(/^(.*)<([^>]+)>$/);
     const email = (named ? named[2] : raw).trim();
-    if (email.includes("@")) {
-      const name = (named ? named[1] : email.split("@")[0]).trim() || email;
-      onChange([...selected, { name, email }]);
-    } else {
-      onChange([...selected, { name: raw, email: null }]);
+    if (!isCompanyEmail(email)) {
+      setError(`${email} is not a ${COMPANY_DOMAIN} address. Mail stays inside the company.`);
+      return;
     }
+    const name = (named ? named[1] : email.split("@")[0]).trim() || email;
+    onChange([...selected, { name, email }]);
+    setError("");
     setQuery("");
   }
 
@@ -47,8 +57,10 @@ export function RecipientSuggester({ selected, onChange }: Props) {
           >
             {r.name}
             <button
+              type="button"
+              aria-label={`Remove ${r.name}`}
               onClick={() => onChange(selected.filter((_, idx) => idx !== i))}
-              className="opacity-60 hover:opacity-100"
+              className="opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
             >
               ×
             </button>
@@ -58,9 +70,12 @@ export function RecipientSuggester({ selected, onChange }: Props) {
       <div className="relative">
         <input
           className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none"
-          placeholder="Name, or anyone@email.com"
+          placeholder="teammate@raidtechs.com"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setError("");
+          }}
           onKeyDown={(e) => e.key === "Enter" && addFreeText()}
         />
         {query && lists.some((list) => list.name.toLowerCase().includes(query.toLowerCase())) && (
@@ -73,7 +88,8 @@ export function RecipientSuggester({ selected, onChange }: Props) {
                   className="block w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5"
                   onClick={() => {
                     const next = list.addresses.filter(
-                      (address) => address.email && !selected.some((item) => item.email === address.email)
+                      (address) =>
+                        isCompanyEmail(address.email) && !selected.some((item) => item.email === address.email)
                     );
                     onChange([...selected, ...next]);
                     setQuery("");
@@ -101,6 +117,7 @@ export function RecipientSuggester({ selected, onChange }: Props) {
           </div>
         )}
       </div>
+      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
 }

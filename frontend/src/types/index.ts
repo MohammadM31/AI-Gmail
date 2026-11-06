@@ -7,7 +7,11 @@ export interface ChartData {
   values: number[];
   imagePath?: string | null;
   facts?: string[];
+  /** false = the sender turned the graphic off. Missing means on, so old threads keep rendering. */
+  enabled?: boolean;
 }
+
+export type ChartKind = "bar" | "line" | "pie";
 
 export interface AiProcessResult {
   recipients: {
@@ -467,6 +471,17 @@ export type ModificationStatus =
   | "ACCEPTED"
   | "REJECTED"
   | "CHANGES_REQUESTED";
+
+export interface Task {
+  id: string;
+  organizationId: string;
+  userId: string;
+  title: string;
+  projectId: string | null;
+  pipelineStageId: string | null;
+  emailId: string | null;
+  createdAt: string;
+}
 
 export interface Modification {
   id: string;

@@ -7,8 +7,46 @@ import { RecipientSuggester } from "./RecipientSuggester";
 import { TemplateSelector } from "./TemplateSelector";
 import { RunningSummary } from "./RunningSummary";
 import { processMessage, createEmail, sendEmail, undoSend, uploadAttachment } from "../../services/apiClient";
-import type { AiProcessResult, Attachment } from "../../types";
+import type { AiProcessResult, Attachment, ChartKind } from "../../types";
 import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
+
+const FACT_SPAN = new RegExp(
+  [
+    // Numbers in any script, with currency, percent and a.m./p.m. suffixes: 70%, 7pm, 7:30, 2026-11-06.
+    String.raw`\p{Sc}?\p{Nd}+(?:[.,:/-]\p{Nd}+)*(?:\s?(?:%|\u066A|percent\b|per cent\b|[ap]\.?m(?!\p{L})\.?))?`,
+    // Spelled-out English months and weekdays. Other languages are caught by their digits.
+    String.raw`\b(?:january|february|march|april|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b`,
+  ].join("|"),
+  "giu"
+);
+
+interface FactSegment {
+  text: string;
+  hit: boolean;
+}
+
+/** Splits one bullet around its numbers, percents, dates and times. Returns null when it has none. */
+function factSegments(bullet: string): FactSegment[] | null {
+  const re = new RegExp(FACT_SPAN.source, FACT_SPAN.flags);
+  const out: FactSegment[] = [];
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(bullet)) !== null) {
+    if (match.index > last) out.push({ text: bullet.slice(last, match.index), hit: false });
+    out.push({ text: match[0], hit: true });
+    last = match.index + match[0].length;
+  }
+  if (out.length === 0) return null;
+  if (last < bullet.length) out.push({ text: bullet.slice(last), hit: false });
+  return out;
+}
+
+function bulletsWithFacts(bullets: string[]) {
+  return bullets.flatMap((bullet, index) => {
+    const segments = factSegments(bullet);
+    return segments ? [{ index, segments }] : [];
+  });
+}
 
 interface ComposerProps {
   threadId?: string | null;
@@ -19,6 +57,7 @@ interface ComposerProps {
     attachments: Attachment[];
     result: AiProcessResult | null;
     saved: boolean;
+    language?: string;
   };
   onStateChange?: (state: any) => void;
 }
@@ -44,6 +83,11 @@ export function Composer({
   const [uploading, setUploading] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [language, setLanguage] = useState(externalState?.language || "en-US");
+  const [graphicOn, setGraphicOn] = useState(true);
+  const [chartType, setChartType] = useState<ChartKind | "auto">("auto");
+  const [chartTitle, setChartTitle] = useState("");
+  const [confirmingFacts, setConfirmingFacts] = useState(false);
 
   const hasValidRecipients =
     recipients.length > 0 && recipients.every((recipient) => recipient.email?.includes("@"));
@@ -99,9 +143,9 @@ export function Composer({
   // ✅ Sync external state
   useEffect(() => {
     if (onStateChange) {
-      onStateChange({ text, recipients, attachments, result, saved });
+      onStateChange({ text, recipients, attachments, result, saved, language });
     }
-  }, [text, recipients, attachments, result, saved]);
+  }, [text, recipients, attachments, result, saved, language]);
 
   // ✅ Mark as dirty when content changes
   useEffect(() => {
@@ -130,8 +174,17 @@ export function Composer({
     setError(null);
     setSaved(false);
     setResult(null);
+    setConfirmingFacts(false);
     try {
-      const res = await processMessage(text);
+      const chartChoice = {
+        ...(graphicOn ? {} : { enabled: false }),
+        ...(chartType === "auto" ? {} : { type: chartType }),
+        ...(chartTitle.trim() ? { title: chartTitle.trim() } : {}),
+      };
+      const res = await processMessage(text, {
+        language,
+        ...(Object.keys(chartChoice).length > 0 ? { chart: chartChoice } : {}),
+      });
       setResult(res);
       if (res.recipients && res.recipients.length > 0) {
         setRecipients(res.recipients);
@@ -249,6 +302,17 @@ export function Composer({
       return;
     }
 
+    if (bulletsWithFacts(result.bulletPoints).length > 0) {
+      setConfirmingFacts(true);
+      return;
+    }
+
+    await deliver();
+  }
+
+  async function deliver() {
+    if (!result) return;
+    setConfirmingFacts(false);
     setSending(true);
     setError(null);
     try {
@@ -290,6 +354,15 @@ export function Composer({
       setSending(false);
     }
   }
+
+  function handleResultEdit(patch: Partial<Pick<AiProcessResult, "bulletPoints" | "chart">>) {
+    // A saved draft holds the old bullets and graphic, so Send makes a fresh draft.
+    setResult((prev) => (prev ? { ...prev, ...patch, emailId: undefined } : prev));
+    setSaved(false);
+    setIsDirty(true);
+  }
+
+  const factBullets = result ? bulletsWithFacts(result.bulletPoints) : [];
 
   return (
     <div className="flex flex-col gap-4">
@@ -338,7 +411,9 @@ export function Composer({
 
         {/* Message body */}
         <textarea
-          className="w-full min-h-28 resize-y bg-transparent outline-none placeholder:opacity-50 text-sm"
+          dir="auto"
+          className="w-full min-h-28 resize-y bg-transparent outline-none placeholder:opacity-50 text-sm focus-visible:ring-2 focus-visible:ring-highlight"
+          aria-label="Message"
           placeholder="Type your message, or use voice input… (⌘+Enter to send)"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -370,10 +445,48 @@ export function Composer({
           </ul>
         )}
 
+        {/* Graphic choice */}
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <label className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={graphicOn}
+              onChange={(e) => setGraphicOn(e.target.checked)}
+            />
+            Graphic
+          </label>
+          <select
+            aria-label="Chart type"
+            className="rounded-full border border-black/10 dark:border-white/10 bg-transparent px-2 py-1"
+            value={chartType}
+            disabled={!graphicOn}
+            onChange={(e) => setChartType(e.target.value as ChartKind | "auto")}
+          >
+            <option value="auto">Auto</option>
+            <option value="bar">Bar</option>
+            <option value="line">Line</option>
+            <option value="pie">Pie</option>
+          </select>
+          <input
+            dir="auto"
+            aria-label="Chart title"
+            className="min-w-0 flex-1 rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1 outline-none"
+            placeholder="Chart title (optional)"
+            maxLength={100}
+            value={chartTitle}
+            disabled={!graphicOn}
+            onChange={(e) => setChartTitle(e.target.value)}
+          />
+        </div>
+
         {/* Toolbar */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <VoiceInput onTranscript={(t) => setText((prev) => (prev ? prev + " " + t : t))} />
+            <VoiceInput
+              initialLanguage={language}
+              onLanguageChange={setLanguage}
+              onTranscript={(t) => setText((prev) => (prev ? prev + " " + t : t))}
+            />
             
             <input
               ref={fileInputRef}
@@ -424,7 +537,7 @@ export function Composer({
       {/* AI Result and Actions */}
       {result && (
         <>
-          <SplitView result={result} />
+          <SplitView result={result} onChange={handleResultEdit} />
           
           <div className="flex flex-wrap items-center gap-3">
             <button
@@ -465,6 +578,48 @@ export function Composer({
               {attachments.length} attachment{attachments.length !== 1 ? "s" : ""}
             </span>
           </div>
+
+          {confirmingFacts && factBullets.length > 0 && (
+            <div
+              role="alertdialog"
+              aria-label="Confirm numbers, dates and times"
+              className="rounded-xl border border-highlight/40 bg-highlight/5 p-4 space-y-3 text-sm"
+            >
+              <p className="font-medium">Check these before sending</p>
+              <ul className="space-y-1">
+                {factBullets.map(({ index, segments }) => (
+                  <li key={index} dir="auto">
+                    {segments.map((segment, i) =>
+                      segment.hit ? (
+                        <mark key={i} className="rounded bg-highlight/20 px-1 font-medium">
+                          {segment.text}
+                        </mark>
+                      ) : (
+                        <span key={i}>{segment.text}</span>
+                      )
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={deliver}
+                  disabled={sending}
+                  className="rounded-full bg-green-500 px-4 py-1.5 font-medium text-white disabled:opacity-40 hover:opacity-90 transition"
+                >
+                  {sending ? "Sending…" : "These are correct, send"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingFacts(false)}
+                  className="rounded-full border border-black/10 dark:border-white/10 px-4 py-1.5 hover:bg-black/5 dark:hover:bg-white/5 transition"
+                >
+                  Go back and edit
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 

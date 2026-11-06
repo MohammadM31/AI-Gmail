@@ -1,7 +1,7 @@
 import { supabase } from "../utils/supabaseClient";
 import { ApiError } from "../middleware/errorHandler";
 import { decryptEmailContent } from "./emailProcessor";
-import { loadMailbox, mutateMailbox } from "./mailboxStore";
+import { loadMailbox, mutateMailbox, pageMailbox } from "./mailboxStore";
 import {
   inFolder,
   involvesAddress,
@@ -84,6 +84,36 @@ interface ListOptions {
 
 export async function listMailbox(options: ListOptions) {
   const owner = await assertMailboxRole(options.organizationId, options.actorId, options.ownerId, "read");
+  const paged = await pageMailbox({
+    organizationId: options.organizationId,
+    userId: owner.id,
+    folder: options.folder,
+    query: options.query,
+    filterType: options.filterType,
+    page: options.page,
+    pageSize: options.pageSize,
+    dateFrom: options.dateFrom,
+    dateTo: options.dateTo,
+    sortBy: options.sortBy,
+  });
+  if (paged) {
+    if (paged.ids.length === 0) return { items: [], total: paged.total, unread: paged.unread };
+    const { data, error } = await supabase.from("Email").select("*").in("id", paged.ids);
+    if (error) throw new ApiError(500, error.message);
+    const byId = new Map((data ?? []).map((row) => [row.id as string, row]));
+    const items = paged.ids
+      .map((id) => byId.get(id))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row))
+      .map((row) =>
+        presentEmail(
+          row as MailRow & { content: string },
+          owner.id,
+          owner.email,
+          paged.metas[row.id as string]
+        )
+      );
+    return { items, total: paged.total, unread: paged.unread };
+  }
   const { data: people, error: peopleError } = await supabase
     .from("User")
     .select("id")

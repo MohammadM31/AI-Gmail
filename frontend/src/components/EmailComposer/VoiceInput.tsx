@@ -1,11 +1,31 @@
 // frontend/src/components/EmailComposer/VoiceInput.tsx
 import { useRef, useState } from "react";
 
+export const VOICE_LANGUAGES = [
+  { code: "en-US", label: "English" },
+  { code: "ar-SA", label: "العربية" },
+  { code: "fr-FR", label: "Français" },
+  { code: "es-ES", label: "Español" },
+  { code: "de-DE", label: "Deutsch" },
+  { code: "pt-BR", label: "Português" },
+  { code: "it-IT", label: "Italiano" },
+  { code: "tr-TR", label: "Türkçe" },
+  { code: "ru-RU", label: "Русский" },
+  { code: "hi-IN", label: "हिन्दी" },
+  { code: "zh-CN", label: "中文" },
+  { code: "ja-JP", label: "日本語" },
+] as const;
+
 interface Props {
   onTranscript: (text: string) => void;
+  /** Starting speech language tag. Defaults to en-US. */
+  initialLanguage?: string;
+  /** Called when the sender picks another language. */
+  onLanguageChange?: (language: string) => void;
 }
 
-export function VoiceInput({ onTranscript }: Props) {
+export function VoiceInput({ onTranscript, initialLanguage = "en-US", onLanguageChange }: Props) {
+  const [language, setLanguage] = useState(initialLanguage);
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -26,7 +46,7 @@ export function VoiceInput({ onTranscript }: Props) {
     
     try {
       const recognition: SpeechRecognition = new SpeechRecognitionCtor();
-      recognition.lang = "en-US";
+      recognition.lang = language;
       recognition.interimResults = true;
       // ❌ REMOVED: recognition.continuous = false; - not standard property
       
@@ -73,11 +93,33 @@ export function VoiceInput({ onTranscript }: Props) {
     setRecording(false);
   }
 
+  const languageSelect = (
+    <select
+      aria-label="Voice language"
+      className="rounded-full border border-black/10 dark:border-white/10 bg-transparent px-2 py-1 text-xs"
+      value={language}
+      disabled={recording}
+      onChange={(e) => {
+        setLanguage(e.target.value);
+        onLanguageChange?.(e.target.value);
+      }}
+    >
+      {VOICE_LANGUAGES.map((l) => (
+        <option key={l.code} value={l.code}>
+          {l.label}
+        </option>
+      ))}
+    </select>
+  );
+
   if (!supported) {
     return (
-      <span className="text-xs text-ink-light/50 dark:text-ink-dark/50">
-        Voice input isn't supported in this browser
-      </span>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-ink-light/50 dark:text-ink-dark/50">
+          Voice input isn't supported in this browser
+        </span>
+        {languageSelect}
+      </div>
     );
   }
 
@@ -94,6 +136,7 @@ export function VoiceInput({ onTranscript }: Props) {
       >
         {recording ? "● Recording…" : "🎙 Record"}
       </button>
+      {languageSelect}
       {error && <span className="text-xs text-highlight">{error}</span>}
     </div>
   );

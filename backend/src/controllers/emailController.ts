@@ -12,7 +12,7 @@ import { getIo } from "../realtime/socket";
 import { encrypt } from "../utils/encryption";
 import { listMailbox, presentEmail, readableEmail, rememberAddresses, setFlags } from "../services/mailboxService";
 import { loadMailbox, mutateMailbox } from "../services/mailboxStore";
-import { queueSend } from "../services/mailDeliveryService";
+import { assertCompanyRecipients, queueSend } from "../services/mailDeliveryService";
 import { quotedBullets, type Address, type MailFolder } from "../services/mailboxLogic";
 import { noteProjectEmail } from "../services/projectDetailSync";
 
@@ -99,6 +99,10 @@ export async function createEmailHandler(
     if (addressed.some((recipient) => !recipient.email)) {
       throw new ValidationError("Every recipient needs an email address. A saved contact is not required.");
     }
+    await assertCompanyRecipients(
+      req.auth!.organizationId,
+      addressed.map((recipient) => recipient.email)
+    );
 
     let alias: string | null = null;
     if (input.fromAlias) {
@@ -187,10 +191,18 @@ function zSendAt(body: unknown): string | undefined {
 
 export async function getThread(req: Request, res: Response, next: NextFunction) {
   try {
+    const { data: people, error: peopleError } = await supabase
+      .from("User")
+      .select("id")
+      .eq("organizationId", req.auth!.organizationId);
+    if (peopleError) throw new ApiError(500, peopleError.message);
+    const orgIds = (people ?? []).map((person) => person.id as string);
+    if (orgIds.length === 0) throw new ApiError(404, "Thread not found");
     const { data, error } = await supabase
       .from("Email")
       .select("*")
       .eq("threadId", req.params.threadId)
+      .in("senderId", orgIds)
       .order("createdAt", { ascending: true });
     if (error) throw new ApiError(500, error.message);
     const visible = [];
@@ -441,6 +453,10 @@ ${input.message}`
       recipients = [senderAddress];
     }
     if (recipients.length === 0) throw new ValidationError("There is nobody to reply to");
+    await assertCompanyRecipients(
+      req.auth!.organizationId,
+      recipients.map((recipient) => recipient.email)
+    );
 
     const email = await createEmailService({
       senderId: actor.id,

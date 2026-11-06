@@ -1,7 +1,8 @@
 // frontend/src/components/EmailView/EmailList.tsx
-import { useEffect, useState, useCallback, useMemo, memo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, memo } from "react";
 import InfiniteScroll from "react-infinite-scroll-component";
 import { useDebounce } from "../../hooks/useDebounce";
+import { useMailEvents } from "../../hooks/useMailEvents";
 import { Skeleton, SkeletonList } from "../Shared/Skeleton";
 import { toast } from "sonner";
 import type { EmailItem } from "../../types";
@@ -77,22 +78,20 @@ const EmailCard = memo(function EmailCard({
   };
 
   return (
-    <button
-      onClick={() => onSelect(email)}
-      className="w-full text-left px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition flex items-start gap-3"
-    >
-      <span
-        role="button"
+    <div className="w-full px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition flex items-start gap-3">
+      <button
+        type="button"
         aria-label={email.starred ? "Unstar" : "Star"}
-        onClick={(event) => {
-          event.stopPropagation();
-          event.preventDefault();
-          onStar(email);
-        }}
-        className={`mt-2 text-sm ${email.starred ? "text-highlight" : "opacity-30"}`}
+        onClick={() => onStar(email)}
+        className={`mt-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight ${email.starred ? "text-highlight" : "opacity-30"}`}
       >
         ★
-      </span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onSelect(email)}
+        className="flex flex-1 items-start gap-3 text-left min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
+      >
       <div className="w-10 h-10 rounded-full bg-accent-light/10 dark:bg-accent-dark/40 flex items-center justify-center text-sm font-semibold shrink-0">
         {getInitials(email)}
       </div>
@@ -132,7 +131,8 @@ const EmailCard = memo(function EmailCard({
           </div>
         )}
       </div>
-    </button>
+      </button>
+    </div>
   );
 });
 
@@ -162,15 +162,16 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
 
   // ✅ Load function with pagination
   const load = useCallback(
-    async (reset: boolean = true) => {
+    async (reset: boolean = true, silent: boolean = false) => {
+      // A silent refresh (socket push) keeps the current list on screen.
       if (reset) {
         setPage(1);
         setHasMore(true);
-        setLoading(true);
+        if (!silent) setLoading(true);
       } else {
         setLoading(true);
       }
-      setError(null);
+      if (!silent) setError(null);
       try {
         const params = new URLSearchParams();
 
@@ -225,11 +226,12 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
         setHasMore(response.items.length < response.total);
         setPage(reset ? 1 : page + 1);
       } catch (err) {
+        if (silent) return; // background refresh: keep the list, skip the toast
         const errorMessage = err instanceof Error ? err.message : "Failed to load emails";
         setError(errorMessage);
         toast.error("Failed to load emails", { description: errorMessage });
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     },
     [debouncedQuery, filterType, sortBy, statusFilter, dateRange, dateFrom, dateTo, page, folder, mailboxUserId]
@@ -255,6 +257,28 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
     }, 30000);
     return () => clearInterval(interval);
   }, [load, loading]);
+
+  // ✅ Refresh when the socket reports new mail (Inbox) or a sent message (Sent)
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
+
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(refreshTimer.current), []);
+
+  useMailEvents((event) => {
+    if (mailboxUserId) return; // viewing a shared mailbox, not our own
+    if (event.type === "received" && folder !== "inbox") return;
+    if (event.type === "sent") {
+      if (folder !== "sent") return;
+      // email:sent goes to the whole org room; skip other people's sends
+      // once the payload carries senderId.
+      if (event.senderId && event.senderId !== currentUser?.id) return;
+    }
+    clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => loadRef.current(true, true), 250);
+  });
 
   // ✅ Load more for infinite scroll
   const loadMore = useCallback(() => {
@@ -307,7 +331,8 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
     <div className="space-y-4">
       {sharedMailboxes.length > 0 && (
         <select
-          className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1.5 text-sm"
+          aria-label="Mailbox"
+          className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
           value={mailboxUserId}
           onChange={(event) => setMailboxUserId(event.target.value)}
         >
@@ -324,7 +349,7 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
           <button
             key={id}
             onClick={() => setFolder(id)}
-            className={`rounded-full px-3 py-1 text-xs ${
+            className={`rounded-full px-3 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight ${
               folder === id ? "bg-highlight text-white" : "border border-black/10 dark:border-white/10"
             }`}
           >
@@ -336,7 +361,8 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
       <div className="flex flex-wrap gap-2 items-center">
         <div className="flex-1 min-w-[200px]">
           <input
-            className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none focus:border-highlight transition"
+            aria-label="Search mail"
+            className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1.5 text-sm outline-none focus:border-highlight focus-visible:ring-2 focus-visible:ring-highlight transition"
             placeholder="Search… from: to: has:attachment after:2026-01-01"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -395,13 +421,15 @@ export const EmailList = memo(function EmailList({ onSelect }: { onSelect: (emai
           <>
             <input
               type="date"
-              className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1.5 text-sm outline-none"
+              aria-label="From date"
+              className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-highlight"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
             />
             <input
               type="date"
-              className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1.5 text-sm outline-none"
+              aria-label="To date"
+              className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-highlight"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
             />

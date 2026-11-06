@@ -1,7 +1,18 @@
-import type { EmailItem } from "../../types";
+import { useEffect, useState } from "react";
+import type { EmailItem, ProjectSummary } from "../../types";
 import { ChartRenderer } from "../Shared/ChartRenderer";
-import { deleteEmail, getAttachmentUrl, replyEmail, restoreEmail, sendEmail, updateEmailFlags } from "../../services/apiClient";
-import { useState } from "react";
+import {
+  createTask,
+  deleteEmail,
+  getAttachmentUrl,
+  listProjectsSummary,
+  replyEmail,
+  restoreEmail,
+  sendEmail,
+  updateEmailFlags,
+} from "../../services/apiClient";
+
+const ACTIONABLE = /\b(send|review|prepare|decide|schedule|call|update|confirm|share)\b/i;
 
 export function EmailDetail({
   email,
@@ -13,6 +24,14 @@ export function EmailDetail({
   onUpdated: (email: EmailItem) => void;
 }) {
   const [sending, setSending] = useState(false);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [trackFor, setTrackFor] = useState<string | null>(null);
+  const [taskProject, setTaskProject] = useState("");
+  const [taskStage, setTaskStage] = useState("");
+  useEffect(() => {
+    if (!email.bulletPoints.some((bullet) => ACTIONABLE.test(bullet))) return;
+    listProjectsSummary().then(setProjects).catch(() => setProjects([]));
+  }, [email.id]);
   const [note, setNote] = useState("");
   const [forwardTo, setForwardTo] = useState("");
   const [label, setLabel] = useState("");
@@ -100,12 +119,66 @@ export function EmailDetail({
         )}
         <ul className="space-y-1 text-sm mb-3">
           {email.bulletPoints.map((b, i) => (
-            <li key={i} className="flex gap-2">
+            <li key={i} className="flex flex-wrap items-center gap-2">
               <span className="opacity-50">•</span>
-              {b}
+              <span>{b}</span>
+              {ACTIONABLE.test(b) && (
+                <button
+                  type="button"
+                  onClick={() => setTrackFor(trackFor === b ? null : b)}
+                  className="rounded-full border border-black/10 dark:border-white/10 px-2 py-0.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
+                >
+                  Track
+                </button>
+              )}
             </li>
           ))}
         </ul>
+        {trackFor && (
+          <form
+            className="mb-3 flex flex-wrap items-center gap-2"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              try {
+                await createTask({
+                  title: trackFor,
+                  projectId: taskProject || undefined,
+                  pipelineStageId: taskStage.trim() || undefined,
+                  emailId: email.id,
+                });
+                setNote("Task saved.");
+                setTrackFor(null);
+              } catch (err) {
+                setNote(err instanceof Error ? err.message : "Could not save the task");
+              }
+            }}
+          >
+            <select
+              aria-label="Project"
+              value={taskProject}
+              onChange={(event) => setTaskProject(event.target.value)}
+              className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1 text-xs"
+            >
+              <option value="">Project</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+            <input
+              aria-label="Pipeline stage id"
+              value={taskStage}
+              onChange={(event) => setTaskStage(event.target.value)}
+              placeholder="Pipeline stage id"
+              className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1 text-xs"
+            />
+            <button
+              type="submit"
+              className="rounded-full bg-highlight px-3 py-1 text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
+            >
+              Save task
+            </button>
+          </form>
+        )}
         {email.attachments?.length > 0 && (
           <ul className="flex flex-wrap gap-2 mb-3">
             {email.attachments.map((a) => (

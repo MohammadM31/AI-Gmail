@@ -5,13 +5,14 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import { connectSocket } from "./services/socketService";
+import { connectSocket, disconnectSocket } from "./services/socketService";
+import { useMailEvents } from "./hooks/useMailEvents";
 
 import {
   useUserStore,
 } from "./stores/userStore";
 
-import { API_URL } from "./services/apiClient";
+import { API_URL, createTask, listProjectsSummary } from "./services/apiClient";
 
 import {
   AuthScreen,
@@ -59,7 +60,10 @@ import {
 
 import {
   EmailItem,
+  ProjectSummary,
 } from "./types";
+
+const ACTIONABLE = /\b(send|review|prepare|decide|schedule|call|update|confirm|share)\b/i;
 
 import {
   PipelineDashboard,
@@ -119,27 +123,18 @@ function getHiddenViews(
 function App() {
   const {
     user,
-    token,
     logout,
     setSession,
   } = useUserStore();
 
   const [sessionChecked, setSessionChecked] = useState(false);
 
-  // A saved user without a token this server accepts used to fire a 401
-  // from every screen. Confirm the token before rendering those screens.
+  // The session lives in an httpOnly cookie. Confirm it before rendering.
   useEffect(() => {
-    if (!token) {
-      setSessionChecked(true);
-      return;
-    }
-
     let cancelled = false;
 
     fetch(`${API_URL}/api/auth/me`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      credentials: "include",
     })
       .then(async (res) => {
         if (res.status === 401) {
@@ -158,11 +153,12 @@ function App() {
             role: profile.role,
             staffRole: profile.staffRole ?? null,
           },
-          token
+          null,
+          profile.csrfToken ?? null
         );
       })
       .catch(() => {
-        // Leave the saved session in place if the backend is unreachable.
+        // The cookie cannot be read from here when the API is unreachable.
       })
       .finally(() => {
         if (!cancelled) setSessionChecked(true);
@@ -171,7 +167,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [token, logout, setSession]);
+  }, [logout, setSession]);
 
   const hiddenViews = getHiddenViews(
     user
@@ -197,6 +193,16 @@ function App() {
   ] = useState<string | null>(
     null
   );
+
+  const [trackFor, setTrackFor] = useState<string | null>(null);
+  const [taskProjects, setTaskProjects] = useState<ProjectSummary[]>([]);
+  const [taskProject, setTaskProject] = useState("");
+  const [taskStage, setTaskStage] = useState("");
+
+  useEffect(() => {
+    if (!selectedEmail?.bulletPoints.some((bullet) => ACTIONABLE.test(bullet))) return;
+    listProjectsSummary().then(setTaskProjects).catch(() => setTaskProjects([]));
+  }, [selectedEmail]);
 
   const [
     mobileNavOpen,
@@ -227,18 +233,20 @@ function App() {
     }
   }, [user, activeView]);
 
+  // The socket is owned here: connect once per signed-in user. Mail events
+  // are fanned out by socketService, so EmailList can subscribe as well.
   useEffect(() => {
-    if (!user) return;
-    const socket = connectSocket();
-    if (!socket) return;
-    const onMail = (payload: { subject?: string }) => {
-      toast.info("New mail", { description: payload.subject });
-    };
-    socket.on("email:received", onMail);
-    return () => {
-      socket.off("email:received", onMail);
-    };
+    if (!user) {
+      disconnectSocket();
+      return;
+    }
+    connectSocket();
   }, [user]);
+
+  useMailEvents((event) => {
+    if (!user || event.type !== "received") return;
+    toast.info("New mail", { description: event.subject });
+  });
 
   const handleNavSelect = (
     view: NavView
@@ -345,18 +353,71 @@ function App() {
                 ) => (
                   <li
                     key={index}
-                    className="flex gap-2"
+                    className="flex flex-wrap items-center gap-2"
                   >
                     <span className="opacity-50">
                       •
                     </span>
-
-                    {bullet}
+                    <span>{bullet}</span>
+                    {ACTIONABLE.test(bullet) && (
+                      <button
+                        type="button"
+                        onClick={() => setTrackFor(trackFor === bullet ? null : bullet)}
+                        className="rounded-full border border-black/10 dark:border-white/10 px-2 py-0.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
+                      >
+                        Track
+                      </button>
+                    )}
                   </li>
                 )
               )}
 
             </ul>
+            {trackFor && (
+              <form
+                className="mb-3 flex flex-wrap items-center gap-2"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  try {
+                    await createTask({
+                      title: trackFor,
+                      projectId: taskProject || undefined,
+                      pipelineStageId: taskStage.trim() || undefined,
+                      emailId: selectedEmail.id,
+                    });
+                    toast.success("Task saved");
+                    setTrackFor(null);
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Could not save the task");
+                  }
+                }}
+              >
+                <select
+                  aria-label="Project"
+                  value={taskProject}
+                  onChange={(event) => setTaskProject(event.target.value)}
+                  className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1 text-xs"
+                >
+                  <option value="">Project</option>
+                  {taskProjects.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name}</option>
+                  ))}
+                </select>
+                <input
+                  aria-label="Pipeline stage id"
+                  value={taskStage}
+                  onChange={(event) => setTaskStage(event.target.value)}
+                  placeholder="Pipeline stage id"
+                  className="rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-2 py-1 text-xs"
+                />
+                <button
+                  type="submit"
+                  className="rounded-full bg-highlight px-3 py-1 text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
+                >
+                  Save task
+                </button>
+              </form>
+            )}
 
             <p className="text-sm opacity-70">
               {
@@ -493,7 +554,7 @@ function App() {
 
         <div className="flex-1 flex flex-col overflow-hidden">
 
-          <header className="flex items-center justify-between px-6 py-3 border-b border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark">
+          <header className="flex items-center justify-between gap-3 px-4 md:px-6 py-3 border-b border-black/10 dark:border-white/10 bg-surface-light dark:bg-surface-dark">
 
             <div className="flex items-center gap-3">
 
@@ -504,7 +565,7 @@ function App() {
                   )
                 }
                 aria-label="Open menu"
-                className="md:hidden rounded-lg p-1.5 -ml-1.5 hover:bg-black/5 dark:hover:bg-white/5 text-xl leading-none"
+                className="md:hidden rounded-lg p-1.5 -ml-1.5 hover:bg-black/5 dark:hover:bg-white/5 text-xl leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
               >
                 ☰
               </button>
@@ -555,7 +616,7 @@ function App() {
 
           </header>
 
-          <main className="flex-1 overflow-y-auto p-6">
+          <main className="flex-1 overflow-y-auto p-4 md:p-6">
             {renderContent()}
           </main>
 

@@ -96,7 +96,7 @@ function NavList({
                 item.key
               )
             }
-            className={`text-left rounded-lg px-3 py-2 text-sm transition ${
+            className={`text-left rounded-lg px-3 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight ${
               active === item.key
                 ? "bg-accent-light/10 dark:bg-accent-dark/40 font-medium"
                 : "hover:bg-black/5 dark:hover:bg-white/5"
@@ -161,7 +161,7 @@ export function Sidebar({
                   onMobileClose
                 }
                 aria-label="Close menu"
-                className="rounded-full p-1.5 hover:bg-black/5 dark:hover:bg-white/5 text-lg leading-none"
+                className="rounded-full p-1.5 hover:bg-black/5 dark:hover:bg-white/5 text-lg leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
               >
                 ×
               </button>

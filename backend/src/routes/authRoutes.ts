@@ -3,6 +3,7 @@ import {
   register,
   login,
   logout,
+  refresh,
   me,
   getInviteCode,
   regenerateInviteCode,
@@ -16,6 +17,7 @@ const router = Router();
 router.post("/register", register);
 router.post("/login", login);
 router.post("/logout", logout);
+router.post("/refresh", requireAuth, refresh);
 router.get("/me", requireAuth, me);
 
 router.get("/org/invite-code", requireAuth, requireTenant, requireStaff, getInviteCode);

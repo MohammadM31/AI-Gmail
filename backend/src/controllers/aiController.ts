@@ -10,15 +10,27 @@ import { logger } from "../utils/logger"; // ✅ ADDED
 import { ApiError } from "../middleware/errorHandler";
 import { chartSpec, factSpec, statedNumberChart, storeInfographic, type ChartPayload } from "../services/infographicService";
 
-const processSchema = z.object({ 
+const processSchema = z.object({
   message: z.string()
     .min(1, "Message is required")
-    .max(10000, "Message exceeds maximum length of 10000 characters")
+    .max(10000, "Message exceeds maximum length of 10000 characters"),
+  language: z
+    .string()
+    .regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/, "Invalid language tag")
+    .max(35)
+    .optional(),
+  chart: z
+    .object({
+      type: z.enum(["bar", "line", "pie"]).optional(),
+      title: z.string().max(100).optional(),
+      enabled: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export async function processMessage(req: Request, res: Response, next: NextFunction) {
   try {
-    const { message } = processSchema.parse(req.body);
+    const { message, language, chart: chartChoice } = processSchema.parse(req.body);
     logger.debug({ userId: req.auth!.userId, messageLength: message.length }, "AI request received");
 
     if (!process.env.OPENAI_API_KEY?.trim()) {
@@ -39,7 +51,7 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
 
     let result;
     try {
-      result = await processMessageWithAI(message, contactNames);
+      result = await processMessageWithAI(message, contactNames, language);
     } catch (aiError) {
       const detail = aiError instanceof Error ? aiError.message : "OpenAI request failed";
       logger.error({ error: aiError, userId: req.auth!.userId }, "OpenAI processing failed");
@@ -68,7 +80,8 @@ export async function processMessage(req: Request, res: Response, next: NextFunc
       req.auth!.userId,
       result.chart,
       result.graphic,
-      message
+      message,
+      chartChoice
     );
 
     if (result.recipients.length === 0) {
@@ -122,12 +135,19 @@ async function attachInfographic(
   userId: string,
   chart: ChartPayload | null,
   graphic?: { title?: string; facts?: string[] } | null,
-  sourceText = ""
-): Promise<ChartPayload | null> {
+  sourceText = "",
+  choice?: { type?: string; title?: string; enabled?: boolean }
+): Promise<(ChartPayload & { enabled?: boolean }) | null> {
+  if (choice?.enabled === false) {
+    return { type: choice.type ?? "bar", title: choice.title ?? "", labels: [], values: [], enabled: false };
+  }
   const numbers = chartSpec(chart);
   const facts = numbers ? null : factSpec(graphic ?? null);
   const spec = numbers ?? facts ?? statedNumberChart(sourceText);
   if (!spec) return numbers ? asChart(numbers) : null;
+  const chosenTitle = choice?.title?.trim().slice(0, 100);
+  if (chosenTitle) spec.title = chosenTitle;
+  if (spec.kind === "chart" && choice?.type) spec.type = choice.type;
   const imagePath = await storeInfographic(organizationId, userId, spec);
   if (spec.kind === "chart") {
     return {
