@@ -1,6 +1,6 @@
 import request from "supertest";
 import { makeQuery, makeSupabaseMock } from "./mocks/supabase";
-import { signAppToken } from "../utils/jwt";
+import { signAppToken, signSessionToken } from "../utils/jwt";
 
 jest.mock("../utils/supabaseClient", () => ({
   supabase: require("./mocks/supabase").makeSupabaseMock(),
@@ -140,6 +140,81 @@ describe("POST /api/auth/login", () => {
     const res = await request(app)
       .post("/api/auth/login")
       .send({ email: "a@example.com", password: "wrong" });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("cookie session on another instance", () => {
+  const future = new Date(Date.now() + 60_000).toISOString();
+
+  function cookie(sessionId: string) {
+    const token = signSessionToken("user-1", "org-1", sessionId);
+    return `app_session=${token}`;
+  }
+
+  it("serves /api/templates when AuthSession cannot be read", async () => {
+    mockedSupabase.from
+      .mockReturnValueOnce(makeQuery({ data: null, error: { message: "relation AuthSession does not exist" } }))
+      .mockReturnValueOnce(makeQuery({ data: [], error: null }));
+
+    const res = await request(app).get("/api/templates").set("Cookie", cookie("sid-no-table"));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it("serves /api/auth/me when the AuthSession row was never stored", async () => {
+    mockedSupabase.from
+      .mockReturnValueOnce(makeQuery({ data: null, error: null }))
+      .mockReturnValueOnce(
+        makeQuery({
+          data: { id: "user-1", email: "a@example.com", name: "Ada", organizationId: "org-1" },
+          error: null,
+        })
+      );
+
+    const res = await request(app).get("/api/auth/me").set("Cookie", cookie("sid-no-row"));
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe("user-1");
+  });
+
+  it("accepts a cookie whose AuthSession row is still live", async () => {
+    mockedSupabase.from
+      .mockReturnValueOnce(makeQuery({ data: { revoked: false, expiresAt: future }, error: null }))
+      .mockReturnValueOnce(
+        makeQuery({
+          data: { id: "user-1", email: "a@example.com", name: "Ada", organizationId: "org-1" },
+          error: null,
+        })
+      );
+
+    const res = await request(app).get("/api/auth/me").set("Cookie", cookie("sid-live"));
+
+    expect(res.status).toBe(200);
+    expect(res.body.organizationId).toBe("org-1");
+  });
+
+  it("rejects a revoked AuthSession", async () => {
+    mockedSupabase.from.mockReturnValueOnce(
+      makeQuery({ data: { revoked: true, expiresAt: future }, error: null })
+    );
+
+    const res = await request(app).get("/api/mailbox").set("Cookie", cookie("sid-revoked"));
+
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects an expired AuthSession", async () => {
+    mockedSupabase.from.mockReturnValueOnce(
+      makeQuery({
+        data: { revoked: false, expiresAt: new Date(Date.now() - 1000).toISOString() },
+        error: null,
+      })
+    );
+
+    const res = await request(app).get("/api/templates").set("Cookie", cookie("sid-expired"));
 
     expect(res.status).toBe(401);
   });

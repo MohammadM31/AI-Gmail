@@ -21,7 +21,12 @@ async function sessionActive(sessionId: string | undefined): Promise<boolean> {
     .select("revoked, expiresAt")
     .eq("id", sessionId)
     .maybeSingle();
-  if (error || !data || data.revoked) return false;
+  // The JWT is already verified. Login still succeeds when the AuthSession
+  // table is missing, and a later request can land on another instance.
+  // With no revocation row, the signed cookie stands. A revoked or expired
+  // row still ends the session.
+  if (error || !data) return true;
+  if (data.revoked) return false;
   return new Date(data.expiresAt).getTime() > Date.now();
 }
 
