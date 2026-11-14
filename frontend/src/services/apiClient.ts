@@ -14,6 +14,7 @@ import type {
   PipelineMetrics,
   PipelineHistory,
   Project,
+  ProjectFactEmail,
   ProjectSummary,
   ClientUser,
   Requirement,
@@ -1113,6 +1114,12 @@ export async function listProjects() {
 export async function listProjectsSummary() {
   return request<ProjectSummary[]>(
     "/api/requirements/projects/summary"
+  );
+}
+
+export async function listProjectFacts(projectId: string) {
+  return request<ProjectFactEmail[]>(
+    `/api/requirements/projects/${encodeURIComponent(projectId)}/facts`
   );
 }
 

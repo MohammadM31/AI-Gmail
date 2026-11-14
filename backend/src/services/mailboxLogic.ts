@@ -15,7 +15,7 @@ export type MailFolder =
   | "starred";
 
 export interface EmailMeta {
-  folder?: "inbox" | "sent" | "drafts" | "spam" | "archive" | "trash";
+  folder?: "inbox" | "sent" | "drafts" | "spam" | "archive" | "trash" | "scheduled";
   starred?: boolean;
   unread?: boolean;
   labels?: string[];

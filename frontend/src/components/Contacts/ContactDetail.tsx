@@ -209,12 +209,9 @@ export function ContactDetail({ contactId, onBack, onEmailSelect }: ContactDetai
                     <span className="text-xs opacity-40">{formatTimestamp(email.createdAt)}</span>
                   </div>
                 </div>
-                <p className="text-xs opacity-60 mt-1 line-clamp-2">{email.content}</p>
-                {email.bulletPoints && email.bulletPoints.length > 0 && (
-                  <div className="mt-1 text-xs opacity-40">
-                    {email.bulletPoints[0]}
-                  </div>
-                )}
+                <p className="text-xs opacity-60 mt-1 line-clamp-2">
+                  {email.bulletPoints?.[0] || email.content}
+                </p>
               </button>
             ))
           )}

@@ -9,9 +9,11 @@ import {
   syncProjectDetails,
   createDigest,
   listTasks,
+  listProjectFacts,
 } from "../../services/apiClient";
+import { ChartRenderer } from "../Shared/ChartRenderer";
 
-import type { ClientUser, ProjectSummary, Task } from "../../types";
+import type { ClientUser, ProjectFactEmail, ProjectSummary, Task } from "../../types";
 
 const INPUT_CLASS =
   "w-full rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-surface-dark px-3 py-1.5 text-sm outline-none";
@@ -345,6 +347,59 @@ function ProjectTasks({ projectId }: { projectId: string }) {
   );
 }
 
+function ProjectFacts({ projectId }: { projectId: string }) {
+  const [facts, setFacts] = useState<ProjectFactEmail[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoaded(false);
+    listProjectFacts(projectId)
+      .then((rows) => {
+        if (!cancelled) setFacts(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setFacts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  return (
+    <section className="rounded-xl border border-black/10 dark:border-white/10 p-4 space-y-3">
+      <h3 className="text-sm font-medium">Recent facts</h3>
+      {!loaded ? (
+        <p className="text-xs opacity-60">Loading fact emails...</p>
+      ) : facts.length === 0 ? (
+        <p className="text-xs opacity-60">No fact emails for this project yet.</p>
+      ) : (
+        <ul className="space-y-4">
+          {facts.map((fact) => (
+            <li key={fact.id} className="space-y-2">
+              <time dateTime={fact.createdAt} className="text-xs opacity-50">
+                {new Date(fact.createdAt).toLocaleString()}
+              </time>
+              <div className="text-sm font-medium">{fact.subject}</div>
+              <ul className="list-disc pl-5 text-sm space-y-1">
+                {fact.bulletPoints.map((bullet, index) => (
+                  <li key={`${fact.id}-${index}`}>{bullet}</li>
+                ))}
+              </ul>
+              {fact.chartData && fact.chartData.enabled !== false && (
+                <ChartRenderer chart={fact.chartData} />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function ProjectPage({
   project,
   section,
@@ -389,6 +444,7 @@ function ProjectPage({
         <>
           <DetailsEditor project={project} onUpdated={onUpdated} />
           <ProjectTasks projectId={project.id} />
+          <ProjectFacts projectId={project.id} />
         </>
       )}
 

@@ -7,7 +7,7 @@ import {
 } from "express";
 
 import { randomUUID } from "crypto";
-import { supabase } from "../utils/supabaseClient";
+import { supabase, supabaseAuth } from "../utils/supabaseClient";
 import { logger } from "../utils/logger";
 import { ApiError } from "../middleware/errorHandler";
 import {
@@ -74,7 +74,7 @@ export async function register(
       data: authData,
       error: authError,
     } =
-      await supabase.auth.signUp({
+      await supabaseAuth.auth.signUp({
         email,
         password,
       });
@@ -321,7 +321,7 @@ export async function login(
       data,
       error,
     } =
-      await supabase.auth.signInWithPassword(
+      await supabaseAuth.auth.signInWithPassword(
         {
           email,
           password,
@@ -397,7 +397,7 @@ export async function logout(
         // An expired cookie still needs to be cleared.
       }
     }
-    await supabase.auth.signOut();
+    await supabaseAuth.auth.signOut();
     res.append("Set-Cookie", clearSessionCookie());
     res.status(204).send();
   } catch (err) {

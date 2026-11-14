@@ -180,6 +180,90 @@ describe("GET /api/requirements/clients", () => {
   });
 });
 
+describe("GET /api/requirements/projects/:id/facts", () => {
+  it("returns the 12 newest org emails whose subject or bullets contain the project name", async () => {
+    const projectQuery = makeQuery({ data: { id: "p1", name: "Client Portal" }, error: null });
+    const membersQuery = makeQuery({ data: [{ id: "u1" }], error: null });
+    const emails = [
+      {
+        id: "other",
+        subject: "Office plants",
+        bulletPoints: ["Water the plants"],
+        chartData: null,
+        createdAt: "2026-11-08T23:59:00.000Z",
+        sender: { name: "Ada", email: "ada@raidtechs.com" },
+        content: "do not return this body",
+      },
+      {
+        id: "bullets-only",
+        subject: "Weekly note",
+        bulletPoints: ["Client Portal review is Friday"],
+        chartData: { type: "bar", title: "Sales", labels: ["Decrease"], values: [70], enabled: true },
+        createdAt: "2026-11-08T23:58:00.000Z",
+        sender: { name: "Ada", email: "ada@raidtechs.com" },
+        content: "ciphertext",
+      },
+      ...Array.from({ length: 12 }, (_, index) => ({
+        id: `match-${index}`,
+        subject: `Client Portal update ${index}`,
+        bulletPoints: ["Client Portal grew"],
+        chartData: null,
+        createdAt: `2026-11-08T23:${String(57 - index).padStart(2, "0")}:00.000Z`,
+        sender: { name: "Ada", email: "ada@raidtechs.com" },
+        content: "ciphertext",
+      })),
+    ];
+    const emailQuery = makeQuery({ data: emails, error: null });
+    mockedSupabase.from
+      .mockReturnValueOnce(staffLookup())
+      .mockReturnValueOnce(projectQuery)
+      .mockReturnValueOnce(membersQuery)
+      .mockReturnValueOnce(emailQuery);
+
+    const res = await request(app)
+      .get("/api/requirements/projects/p1/facts")
+      .set("Authorization", `Bearer ${token()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(12);
+    expect(res.body[0]).toMatchObject({
+      id: "bullets-only",
+      subject: "Weekly note",
+      bulletPoints: ["Client Portal review is Friday"],
+      sender: { name: "Ada", email: "ada@raidtechs.com" },
+    });
+    expect(res.body.map((row: { id: string }) => row.id)).not.toContain("other");
+    expect(res.body.map((row: { id: string }) => row.id)).not.toContain("match-11");
+    for (const row of res.body) {
+      expect(row).not.toHaveProperty("content");
+    }
+    expect(projectQuery.eq).toHaveBeenCalledWith("organizationId", "org-1");
+    expect(membersQuery.eq).toHaveBeenCalledWith("organizationId", "org-1");
+    expect(emailQuery.in).toHaveBeenCalledWith("senderId", ["u1"]);
+    expect(emailQuery.is).toHaveBeenCalledWith("deletedAt", null);
+    expect(emailQuery.order).toHaveBeenCalledWith("createdAt", { ascending: false });
+    expect(emailQuery.select).toHaveBeenCalledWith(
+      "id, subject, bulletPoints, chartData, createdAt, sender:User!senderId(name, email)"
+    );
+  });
+
+  it("returns 404 when the project is not in the caller's organization", async () => {
+    const projectQuery = makeQuery({ data: null, error: null });
+    mockedSupabase.from
+      .mockReturnValueOnce(staffLookup())
+      .mockReturnValueOnce(projectQuery);
+
+    const res = await request(app)
+      .get("/api/requirements/projects/missing/facts")
+      .set("Authorization", `Bearer ${token()}`);
+
+    expect(res.status).toBe(404);
+    expect(projectQuery.eq).toHaveBeenCalledWith("id", "missing");
+    expect(projectQuery.eq).toHaveBeenCalledWith("organizationId", "org-1");
+    expect(mockedSupabase.from).not.toHaveBeenCalledWith("Email");
+  });
+});
+
 describe("POST /api/requirements/projects", () => {
   it("creates new projects as ACTIVE", async () => {
     const insertQuery = makeQuery({ data: { id: "p9", status: "ACTIVE" }, error: null });

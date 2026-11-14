@@ -6,6 +6,7 @@ import { requireStaff, requireRole } from "../middleware/requireRole";
 import {
   listProjects,
   listProjectsSummary,
+  listProjectFacts,
   listClients,
   createProject,
   updateProject,
@@ -28,6 +29,7 @@ router.post("/projects", requireStaff, createProject);
 router.post("/projects/sync", requireStaff, syncProjectsFromMail);
 router.patch("/projects/:id", requireStaff, updateProject);
 router.get("/projects/summary", requireStaff, listProjectsSummary);
+router.get("/projects/:id/facts", requireStaff, listProjectFacts);
 
 router.get("/clients", requireStaff, listClients);
 

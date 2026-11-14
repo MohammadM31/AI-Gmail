@@ -390,6 +390,19 @@ export interface Project {
   updatedAt: string;
 }
 
+// GET /api/requirements/projects/:id/facts
+export interface ProjectFactEmail {
+  id: string;
+  subject: string;
+  bulletPoints: string[];
+  chartData: ChartData | null;
+  createdAt: string;
+  sender: {
+    name: string;
+    email: string;
+  };
+}
+
 // GET /api/requirements/projects/summary
 export interface ProjectSummary extends Project {
   clientName: string | null;

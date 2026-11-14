@@ -63,7 +63,7 @@ export function ThreadMessage({ message, isCurrentUser, senderName }: ThreadMess
             {formatTimestamp(message.createdAt)}
           </span>
         </div>
-        <p className="text-sm">{message.content}</p>
+        {message.bulletPoints.length === 0 && <p className="text-sm">{message.content}</p>}
         {message.bulletPoints.length > 0 && (
           <ul className="mt-2 text-sm space-y-1">
             {message.bulletPoints.map((point, i) => (

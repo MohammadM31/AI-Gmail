@@ -202,6 +202,98 @@ export async function listProjectsSummary(
   }
 }
 
+const FACT_LIMIT = 12;
+const FACT_PAGE = 100;
+
+function containsProjectName(subject: string, bullets: string[], name: string): boolean {
+  const needle = name.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!needle) return false;
+  const haystack = [subject, ...bullets].join("\n").toLowerCase().replace(/\s+/g, " ");
+  return haystack.includes(needle);
+}
+
+function senderFields(sender: unknown): { name: string; email: string } {
+  const row = Array.isArray(sender) ? sender[0] : sender;
+  if (!row || typeof row !== "object") return { name: "", email: "" };
+  const record = row as { name?: unknown; email?: unknown };
+  return {
+    name: typeof record.name === "string" ? record.name : "",
+    email: typeof record.email === "string" ? record.email : "",
+  };
+}
+
+export async function listProjectFacts(req: Request, res: Response, next: NextFunction) {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const { data: project, error: projectError } = await supabase
+      .from("Project")
+      .select("id, name")
+      .eq("id", req.params.id)
+      .eq("organizationId", organizationId)
+      .maybeSingle();
+
+    if (projectError) throw new ApiError(500, projectError.message);
+    if (!project?.name) throw new ApiError(404, "Project not found");
+
+    const { data: members, error: membersError } = await supabase
+      .from("User")
+      .select("id")
+      .eq("organizationId", organizationId);
+    if (membersError) throw new ApiError(500, membersError.message);
+
+    const memberIds = (members ?? []).map((member) => member.id as string);
+    if (memberIds.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const matches: {
+      id: string;
+      subject: string;
+      bulletPoints: string[];
+      chartData: unknown;
+      createdAt: string;
+      sender: { name: string; email: string };
+    }[] = [];
+
+    for (let offset = 0; matches.length < FACT_LIMIT && offset < 2000; offset += FACT_PAGE) {
+      const { data, error } = await supabase
+        .from("Email")
+        .select("id, subject, bulletPoints, chartData, createdAt, sender:User!senderId(name, email)")
+        .in("senderId", memberIds)
+        .is("deletedAt", null)
+        .order("createdAt", { ascending: false })
+        .range(offset, offset + FACT_PAGE - 1);
+
+      if (error) throw new ApiError(500, error.message);
+      const rows = data ?? [];
+      for (const row of rows) {
+        const subject = String(row.subject ?? "");
+        const bulletPoints = Array.isArray(row.bulletPoints) ? row.bulletPoints.map(String) : [];
+        if (!containsProjectName(subject, bulletPoints, String(project.name))) continue;
+        const chartData =
+          row.chartData && typeof row.chartData === "object" && !Array.isArray(row.chartData)
+            ? row.chartData
+            : null;
+        matches.push({
+          id: String(row.id),
+          subject,
+          bulletPoints,
+          chartData,
+          createdAt: String(row.createdAt ?? ""),
+          sender: senderFields(row.sender),
+        });
+        if (matches.length === FACT_LIMIT) break;
+      }
+      if (rows.length < FACT_PAGE) break;
+    }
+
+    res.json(matches);
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function clientIdForContact(organizationId: string, contactId: string): Promise<string> {
   const { data: contact, error } = await supabase
     .from("Contact")

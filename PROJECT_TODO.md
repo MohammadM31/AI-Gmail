@@ -20,6 +20,10 @@ Emails are AI summaries of the critical facts, with an infographic that supports
 
 ## Archive
 
+Shipped 2026-11-08:
+
+- Opening a project lists the recent fact emails whose subject or bullets contain that project name, newest first, with the date, bullets, and chart.
+
 Shipped 2026-11-06:
 
 - Docker image and CI install Python and matplotlib, and a prompt with figures is checked as a PNG.

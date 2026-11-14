@@ -10,6 +10,13 @@ if (!url || !key) {
   );
 }
 
-export const supabase = createClient(url ?? "", key ?? "", {
-  auth: { persistSession: false },
-});
+const clientOptions = {
+  auth: { persistSession: false, autoRefreshToken: false },
+};
+
+export const supabase = createClient(url ?? "", key ?? "", clientOptions);
+
+// signInWithPassword stores the user token on the client that called it.
+// Storage and table writes must keep the service-role token, so password
+// login uses this second client and never touches `supabase`.
+export const supabaseAuth = createClient(url ?? "", key ?? "", clientOptions);

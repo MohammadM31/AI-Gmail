@@ -419,11 +419,9 @@ function App() {
               </form>
             )}
 
-            <p className="text-sm opacity-70">
-              {
-                selectedEmail.content
-              }
-            </p>
+            {selectedEmail.bulletPoints.length === 0 && (
+              <p className="text-sm opacity-70">{selectedEmail.content}</p>
+            )}
 
             <div className="mt-3 text-xs opacity-50">
               Status:{" "}

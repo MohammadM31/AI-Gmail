@@ -48,6 +48,11 @@ function bulletsWithFacts(bullets: string[]) {
   });
 }
 
+function summaryBody(brief: string, bullets: string[]): string {
+  const facts = bullets.map((bullet) => bullet.trim()).filter(Boolean);
+  return facts.length > 0 ? facts.join("\n") : brief.trim();
+}
+
 interface ComposerProps {
   threadId?: string | null;
   onEmailSent?: () => void;
@@ -263,7 +268,7 @@ export function Composer({
         cc: extraAddresses(ccText),
         bcc: extraAddresses(bccText),
         subject: result.subject,
-        content: text,
+        content: summaryBody(text, result.bulletPoints),
         bulletPoints: result.bulletPoints,
         chartData: result.chart,
         attachments,
@@ -316,23 +321,19 @@ export function Composer({
     setSending(true);
     setError(null);
     try {
-      let emailId = (result as any).emailId;
-      if (!emailId) {
-        const email = await createEmail({
-          recipients,
-          cc: extraAddresses(ccText),
-          bcc: extraAddresses(bccText),
-          subject: result.subject,
-          content: text,
-          bulletPoints: result.bulletPoints,
-          chartData: result.chart,
-          attachments,
-          threadId,
-        });
-        emailId = email.id;
-      }
+      const email = await createEmail({
+        recipients,
+        cc: extraAddresses(ccText),
+        bcc: extraAddresses(bccText),
+        subject: result.subject,
+        content: summaryBody(text, result.bulletPoints),
+        bulletPoints: result.bulletPoints,
+        chartData: result.chart,
+        attachments,
+        threadId,
+      });
 
-      const sent = await sendEmail(emailId, sendAt ? { sendAt: new Date(sendAt).toISOString() } : undefined);
+      const sent = await sendEmail(email.id, sendAt ? { sendAt: new Date(sendAt).toISOString() } : undefined);
 
       if (sent.status === "pending") {
         toast.success("Sending in a few seconds", {

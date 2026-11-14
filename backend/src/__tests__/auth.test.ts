@@ -2,9 +2,10 @@ import request from "supertest";
 import { makeQuery, makeSupabaseMock } from "./mocks/supabase";
 import { signAppToken } from "../utils/jwt";
 
-jest.mock("../utils/supabaseClient", () => ({
-  supabase: require("./mocks/supabase").makeSupabaseMock(),
-}));
+jest.mock("../utils/supabaseClient", () => {
+  const client = require("./mocks/supabase").makeSupabaseMock();
+  return { supabase: client, supabaseAuth: client };
+});
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import { supabase } from "../utils/supabaseClient";
